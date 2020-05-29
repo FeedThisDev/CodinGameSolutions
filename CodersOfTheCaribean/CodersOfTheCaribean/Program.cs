@@ -71,70 +71,8 @@ namespace CodersOfTheCaribean
                 {
                     StartFunction("ShipLogic");
 
-                    var barrels = Gameboard.GetBarrels();
+                    GetDesination()
 
-                    #region FireShot?
-                    if (ship.HasFiredLastRound == false && !barrels.Any())
-                    {
-                        var closestEnemy = Gameboard.GetEnemyShipsByDistance(ship).First();
-                        var distance = ship.GetDistanceTo(closestEnemy);
-
-                        if (distance <= 12)
-                        {
-                            Field shootAtField = GetTarget(takenShotDestinations, closestEnemy, distance);
-                            if (ship.GetDistanceTo(shootAtField.Col, shootAtField.Row) < 10)
-                            {
-                                Console.WriteLine($"FIRE {shootAtField}");
-                                ship.HasFiredLastRound = true;
-                                continue;
-                            }
-                        }
-                    }
-                    else
-                    {
-                        ship.HasFiredLastRound = false;
-                    }
-                    #endregion FireShot?
-
-                    #region PlaceMine?
-                    ////Place Mine?
-                    //int rand = randGen.Next(3) + 1;
-                    //if (ship.Speed > 0 && rand % 2 == 0)
-                    //{
-                    //    Field fieldBehindShip = ship.GetFieldBehind();
-                    //    if (fieldBehindShip.EntityOnField?.EntityType != Entity.EntityTypeEnum.SHIP || (fieldBehindShip.EntityOnField as Ship).IsMyShip == false)
-                    //    {
-                    //        Console.WriteLine("MINE");
-                    //        continue;
-                    //    }
-                    //}
-                    #endregion PlaceMine?
-
-                    Field nextField;
-                    
-                    if (barrels.Any(x => !takenFieldDestinations.Contains(Gameboard.Fields[x.Col,x.Row])))
-                    {
-                        nextField = barrels.Select(x => Gameboard.Fields[x.Col,x.Row])
-                           .Where(x => !takenFieldDestinations.Contains(x))
-                           .OrderBy(x => ship.GetDistanceTo(x.Col, x.Row))
-                           .ThenByDescending(x => (x.EntityOnField as Barrel).AmountOfRum)
-                           .First();
-                    } 
-                    else
-                    {
-                        var closestEnemy = Gameboard.GetEnemyShipsByDistance(ship).First();
-                        nextField = Gameboard.Fields[closestEnemy.Col, closestEnemy.Row];
-                    }
-
-                    takenFieldDestinations.Add(nextField);
-
-                    Log($"TargetDestination: {nextField.ToString()}", LogLevel.WARN);
-
-                    var getNextStep = FindOptimalPath(ship, nextField);
-
-                    Console.WriteLine($"MOVE {getNextStep.ToString()}");
-
-                    StopFunction("ShipLogic", LogLevel.TRACE);
                 }
                 Console.Out.Flush();
                 Console.Error.Flush();
@@ -194,34 +132,34 @@ namespace CodersOfTheCaribean
             return result;
         }
 
-        private static Field GetTarget(List<Field> takenShots, Ship closestEnemy, float distance)
-        {
-            StartFunction("GetTarget");
-            int roundsTillImpact = (int)Math.Round(1 + distance / 3, 0);
+        //private static Field GetTarget(List<Field> takenShots, Ship closestEnemy, float distance)
+        //{
+        //    StartFunction("GetTarget");
+        //    int roundsTillImpact = (int)Math.Round(1 + distance / 3, 0);
 
-            Field fieldWhereIsShipGonnaBe = GetDesination(closestEnemy, roundsTillImpact);
+        //    Field fieldWhereIsShipGonnaBe = GetBulletDesination(closestEnemy, roundsTillImpact);
 
-            while (takenShots.Contains(fieldWhereIsShipGonnaBe))
-            {
-                fieldWhereIsShipGonnaBe = fieldWhereIsShipGonnaBe.RandMutate();
-            }
-            takenShots.Add(fieldWhereIsShipGonnaBe);
+        //    while (takenShots.Contains(fieldWhereIsShipGonnaBe))
+        //    {
+        //        fieldWhereIsShipGonnaBe = fieldWhereIsShipGonnaBe.RandMutate();
+        //    }
+        //    takenShots.Add(fieldWhereIsShipGonnaBe);
 
-            StopFunction("GetTarget", Program.LogLevel.TRACE);
-            return fieldWhereIsShipGonnaBe;
-        }
+        //    StopFunction("GetTarget", Program.LogLevel.TRACE);
+        //    return fieldWhereIsShipGonnaBe;
+        //}
 
-        private static Field GetDesination(Ship closestEnemy, int roundsTillImpact)
-        {
-            StartFunction("GetDesination");
-            while (--roundsTillImpact >= 0)
-            {
-                closestEnemy = closestEnemy.GetShipAfterSimulatedMove();
-            }
+        //private static Field GetBulletDesination(Ship closestEnemy, int roundsTillImpact)
+        //{
+        //    StartFunction("GetDesination");
+        //    while (--roundsTillImpact >= 0)
+        //    {
+        //        closestEnemy = closestEnemy.GetShipAfterSimulatedMove();
+        //    }
 
-            StopFunction("GetDesination", Program.LogLevel.TRACE);
-            return Gameboard.Fields[closestEnemy.Col, closestEnemy.Row];
-        }
+        //    StopFunction("GetDesination", Program.LogLevel.TRACE);
+        //    return Gameboard.Fields[closestEnemy.Col, closestEnemy.Row];
+        //}
     }
 
     //USES odd-r coordinates
@@ -545,6 +483,17 @@ namespace CodersOfTheCaribean
             SouthWest = 4,
             SouthEast = 5
         }
+
+        public enum Actions
+        {
+            FIRE,
+            MINE,
+            PORT,
+            STARBOARD,
+            FASTER,
+            SLOWER,
+            WAIT
+        }
     }
 
     public class Barrel : Entity
@@ -612,8 +561,6 @@ namespace CodersOfTheCaribean
         public int GetDistanceTo(Field field)
         {
             int result = cubeDistance(GetCubeCoordinates(), field.GetCubeCoordinates());
-
-            //Console.Error.WriteLine(result);
             return result;
         }
 
@@ -643,8 +590,10 @@ namespace CodersOfTheCaribean
         {
             if (obj == null) return false;
             Field objAsField = obj as Field;
-            if (objAsField == null) return false;
-            else return Equals(objAsField);
+            if (objAsField == null) 
+                return false;
+            else 
+                return Equals(objAsField);
         }
         public override int GetHashCode()
         {
@@ -652,7 +601,8 @@ namespace CodersOfTheCaribean
         }
         public bool Equals(Field other)
         {
-            if (other == null) return false;
+            if (other == null) 
+                return false;
             return this.Col == other.Col && this.Row == other.Row;
         }
 
@@ -667,7 +617,7 @@ namespace CodersOfTheCaribean
 
     static class Gameboard
     {
-        public const int MAXHEIGHT = 20;
+        public const int MAXHEIGHT = 21;
         public const int MAXWIDTH = 22;
 
 
@@ -690,10 +640,6 @@ namespace CodersOfTheCaribean
             }
         }
 
-        public static IEnumerable<CannonBall> GetCannonballs()
-        {
-            return _allEntities.Where(x => x.EntityType == Entity.EntityTypeEnum.CANNONBALL).Select(x => (CannonBall)x);
-        }
 
         public static void UpdateBoard(int entityCount)
         {
@@ -750,6 +696,10 @@ namespace CodersOfTheCaribean
             Program.StopFunction("Gameboard.Update", Program.LogLevel.TRACE);
         }
 
+        public static IEnumerable<CannonBall> GetCannonballs()
+        {
+            return _allEntities.Where(x => x.EntityType == Entity.EntityTypeEnum.CANNONBALL).Select(x => (CannonBall)x);
+        }
         public static IEnumerable<Ship> GetPlayerShips()
         {
             return _allEntities.Where(x => x.EntityType == Entity.EntityTypeEnum.SHIP && (x as Ship).IsMyShip).Select(x => (Ship)x);
