@@ -4,22 +4,34 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Diagnostics;
+using System.Collections;
 
 namespace CodersOfTheCaribean
 {
-    internal class Program
+    public class Program
     {
-        const LogLevel CurrentLogLevel = LogLevel.INFO;
-        internal enum LogLevel
-        {
-            TRACE = 0,
-            INFO = 1,
-            WARN = 2,
-            ERROR = 3
-        }
+        #region DEBUGSTUFF
         static Dictionary<string, Stopwatch> swDict = new Dictionary<string, Stopwatch>();
+        const LogLevel CurrentLogLevel = LogLevel.INFO;
+        public enum LogLevel
+        {
+            DISABLED = 0,
+            ERROR = 1,
+            WARN = 3,
+            INFO = 4,
+            TRACE = 5,
+        }
 
-        internal static void StartFunction(string functionName)
+
+        public static void Log(string log, LogLevel logLevel)
+        {
+            if (logLevel <= CurrentLogLevel)
+            {
+                Console.Error.WriteLine(log);
+                Console.Error.Flush();
+            }
+        }
+        public static void StartFunction(string functionName)
         {
             Stopwatch sw;
             if (!swDict.TryGetValue(functionName, out sw))
@@ -27,82 +39,181 @@ namespace CodersOfTheCaribean
 
             swDict[functionName].Restart();
         }
-        internal static void StopFunction(string functionName, LogLevel logLevel)
+        public static void StopFunction(string functionName, LogLevel logLevel)
         {
             swDict[functionName].Stop();
-            if(logLevel >= CurrentLogLevel)
+            if (logLevel <= CurrentLogLevel)
                 Console.Error.WriteLine($"{functionName} took {swDict[functionName].ElapsedMilliseconds} ms");
         }
+        #endregion
 
         static void Main(string[] args)
         {
+            Random randGen = new Random();
             int turnCounter = 0;
-            bool[] firedLastTurn = new bool[3];
-            firedLastTurn[0] = true;
-            firedLastTurn[1] = true;
-            firedLastTurn[2] = true;
 
-            int lastRow = -1;
-            int lastCol = -1;
+            List<Field> takenFieldDestinations = new List<Field>(); // don't send several ships to the same Field
+            List<Field> takenShotDestinations = new List<Field>();  // don't shoot at the same field as other ships
 
-            List<Field> takenFields = new List<Field>();
-            List<Field> takenShots = new List<Field>();
             // game loop
             while (true)
             {
-
                 StartFunction("MainLoop");
-                takenFields.Clear();
-                takenShots = GetShotsInTheAir();
+                takenFieldDestinations.Clear();
+                takenShotDestinations = GetShotsInTheAir();
                 ++turnCounter;
-                StartFunction("ReadInput");
                 int myShipCount = int.Parse(Console.ReadLine()); // the number of remaining ships
                 int entityCount = int.Parse(Console.ReadLine()); // the number of entities (e.g. ships, mines or cannonballs)
-                StopFunction("ReadInput", LogLevel.INFO);
-                int shipCount = 0;
-                var myShips = Gameboard.Update(entityCount);
-                foreach (var ship in myShips.OrderBy(x => x.EntityId))
+
+                Gameboard.UpdateBoard(entityCount);
+
+                foreach (var ship in Gameboard.GetPlayerShips()
+                                              .OrderBy(x => x.EntityId))
                 {
                     StartFunction("ShipLogic");
-                    if (firedLastTurn[shipCount] == false)
-                    {
-                        var closestEnemy = (Ship)Gameboard.AllEntities
-                            .Where(x => x.EntityType == EntityType.SHIP && (x as Ship).IsMyShip == false)
-                            .OrderBy(x => ship.GetDistanceTo(x))
-                            .First();
 
+                    //if (shipCount++ > 0)
+                    //{
+                    //    Console.WriteLine("WAIT");
+                    //    break;
+                    //}
+
+                    var barrels = Gameboard.GetBarrels();
+
+                    #region FireShot?
+                    if (ship.HasFiredLastRound == false && !barrels.Any())
+                    {
+                        var closestEnemy = Gameboard.GetEnemyShipsByDistance(ship).First();
                         var distance = ship.GetDistanceTo(closestEnemy);
-                        if (distance <= 9)
+
+                        if (distance <= 12)
                         {
-                            Field shootAtField = GetTarget(takenShots, closestEnemy, distance);
-                            Console.WriteLine($"FIRE {shootAtField}");
-                            firedLastTurn[shipCount] = true;
-                            continue;
+                            Field shootAtField = GetTarget(takenShotDestinations, closestEnemy, distance);
+                            if (ship.GetDistanceTo(shootAtField.Col, shootAtField.Row) < 10)
+                            {
+                                Console.WriteLine($"FIRE {shootAtField}");
+                                ship.HasFiredLastRound = true;
+                                continue;
+                            }
                         }
+                    }
+                    else
+                    {
+                        ship.HasFiredLastRound = false;
+                    }
+                    #endregion FireShot?
+
+                    #region PlaceMine?
+                    ////Place Mine?
+                    //int rand = randGen.Next(3) + 1;
+                    //if (ship.Speed > 0 && rand % 2 == 0)
+                    //{
+                    //    Field fieldBehindShip = ship.GetFieldBehind();
+                    //    if (fieldBehindShip.EntityOnField?.EntityType != Entity.EntityTypeEnum.SHIP || (fieldBehindShip.EntityOnField as Ship).IsMyShip == false)
+                    //    {
+                    //        Console.WriteLine("MINE");
+                    //        continue;
+                    //    }
+                    //}
+                    #endregion PlaceMine?
+
+                    Field nextField;
+                    
+                    if (barrels.Any(x => !takenFieldDestinations.Contains(Gameboard.Fields[x.Col,x.Row])))
+                    {
+                        nextField = barrels.Select(x => Gameboard.Fields[x.Col,x.Row])
+                           .Where(x => !takenFieldDestinations.Contains(x))
+                           .OrderBy(x => ship.GetDistanceTo(x.Col, x.Row))
+                           .ThenByDescending(x => (x.EntityOnField as Barrel).AmountOfRum)
+                           .First();
                     } 
                     else
                     {
-                        firedLastTurn[shipCount] = false;
-                    } 
+                        var closestEnemy = Gameboard.GetEnemyShipsByDistance(ship).First();
+                        nextField = Gameboard.Fields[closestEnemy.Col, closestEnemy.Row];
+                    }
 
-                    var nextField = Gameboard.Fields.Cast<Field>()
-                        .Where(x => !takenFields.Contains(x))
-                        .OrderByDescending(x => x.Score - Math.Sqrt(ship.GetDistanceTo(x.Col, x.Row))).First();
+                    takenFieldDestinations.Add(nextField);
 
-                    takenFields.Add(nextField);
-                    Gameboard.AddRadiusFields(nextField.Col, nextField.Row, takenFields);
+                    Log($"TargetDestination: {nextField.ToString()}", LogLevel.WARN);
 
-                    Console.WriteLine($"MOVE {nextField.Col} {nextField.Row}");
+                    var getNextStep = FindOptimalPath(ship, nextField);
 
-                    shipCount++;
+                    Console.WriteLine($"MOVE {getNextStep.ToString()}");
 
-                    StopFunction("ShipLogic", LogLevel.INFO);
+                    StopFunction("ShipLogic", LogLevel.TRACE);
                 }
                 Console.Out.Flush();
                 Console.Error.Flush();
 
+
                 StopFunction("MainLoop", LogLevel.INFO);
             }
+        }
+
+        private static Field FindOptimalPath(Ship ship, Field targetField)
+        {
+            Field startField = Gameboard.Fields[ship.Col, ship.Row];
+
+            Log($"StartField {startField}", LogLevel.WARN);
+            Log($"TargetField {targetField}", LogLevel.WARN);
+
+            AStarSearch search = new AStarSearch(startField, targetField);
+
+            //Field lastCurrent = null;
+            //var current = search.cameFrom[targetField];
+            //while(current != null)
+            //{
+            //    lastCurrent = current.CloneLocation();
+            //    current = search.cameFrom[current];
+            //}
+
+            //return lastCurrent;
+
+            foreach (var kvp in search.cameFrom)
+            {
+                if (kvp.Value != null)
+                    Log($"FROM {kvp.Key.ToString()} TO {kvp.Value.ToString()}", LogLevel.WARN);
+                else
+                    Log($"FROM {kvp.Key.ToString()}", LogLevel.WARN);
+            }
+
+            Log($"SearchLookup {search.cameFrom[Gameboard.Fields[ship.Col, ship.Row]]}", LogLevel.WARN);
+            var gotoNextField = search.cameFrom[Gameboard.Fields[ship.Col, ship.Row]] ?? targetField;
+            Log($"FROM {gotoNextField}", LogLevel.WARN);
+            return gotoNextField;
+
+            //List<Field> path = new List<Field>();
+            //var current = search.cameFrom[startField];
+            //while(current != null)
+            //{
+            //    path.Add(current);
+            //    current = search.cameFrom[current];
+            //}            
+
+            //Log($"Path.Length {path.Count()}", LogLevel.WARN);
+
+            //for (int i = 0; i < path.Count(); i++)
+            //    Log($"Path[{i}]: {path[i].ToString()}", LogLevel.WARN);
+
+            //var gotoField = path.FirstOrDefault(x => !x.Equals(startField));
+            //if(gotoField == null)
+            //    gotoField = Gameboard.Fields[0,0];
+            //return gotoField;
+        }
+
+        private static IEnumerable<Field> getBlockedFields(Ship ship)
+        {
+            var mines = Gameboard.GetMines();
+            var otherShips = Gameboard.GetShips().Where(x => x.EntityId != ship.EntityId);
+            var cannonBalls = Gameboard.GetCannonballs();
+
+
+            return mines.Cast<Entity>()
+                .Concat(otherShips.Cast<Entity>())
+                .Concat(cannonBalls.Cast<Entity>())
+                .Select(x => Gameboard.Fields[x.Col, x.Row]);
+
         }
 
         private static List<Field> GetShotsInTheAir()
@@ -110,7 +221,7 @@ namespace CodersOfTheCaribean
             StartFunction("GetShotsInTheAir");
             List<Field> result = new List<Field>();
 
-            foreach (var shot in Gameboard.AllEntities.Where(x => x.EntityType == EntityType.CANNONBALL))
+            foreach (var shot in Gameboard.GetCannonballs())
             {
                 result.Add(Gameboard.Fields[shot.Col, shot.Row]);
             }
@@ -121,15 +232,13 @@ namespace CodersOfTheCaribean
         private static Field GetTarget(List<Field> takenShots, Ship closestEnemy, float distance)
         {
             StartFunction("GetTarget");
-            //Console.Error.WriteLine($"Distance {distance} {closestEnemy.CurrentRotation.ToString()}");
             int roundsTillImpact = (int)Math.Round(1 + distance / 3, 0);
 
             Field fieldWhereIsShipGonnaBe = GetDesination(closestEnemy, roundsTillImpact);
-            int count = 0;
+
             while (takenShots.Contains(fieldWhereIsShipGonnaBe))
             {
-                
-                fieldWhereIsShipGonnaBe =  fieldWhereIsShipGonnaBe.RandMutate();
+                fieldWhereIsShipGonnaBe = fieldWhereIsShipGonnaBe.RandMutate();
             }
             takenShots.Add(fieldWhereIsShipGonnaBe);
 
@@ -142,8 +251,7 @@ namespace CodersOfTheCaribean
             StartFunction("GetDesination");
             while (--roundsTillImpact >= 0)
             {
-                //Console.Error.WriteLine($"Before Simulate Move: {closestEnemy.Col} {closestEnemy.Row} {roundsTillImpact}");
-                closestEnemy = closestEnemy.SimulateMove();
+                closestEnemy = closestEnemy.GetShipAfterSimulatedMove();
             }
 
             StopFunction("GetDesination", Program.LogLevel.TRACE);
@@ -156,12 +264,19 @@ namespace CodersOfTheCaribean
 
 
     //USES odd-r coordinates
-    abstract class Entity
+    public abstract class Entity
     {
-        internal int EntityId { get; set; }
-        internal int Col { get; set; }
-        internal int Row { get; set; }
-        internal EntityType EntityType { get; set; }
+        public enum EntityTypeEnum
+        {
+            SHIP,
+            BARREL,
+            MINE,
+            CANNONBALL
+        }
+        public int EntityId { get; set; }
+        public int Col { get; set; }
+        public int Row { get; set; }
+        public EntityTypeEnum EntityType { get; set; }
 
         protected Entity(string[] inputs)
         {
@@ -169,14 +284,19 @@ namespace CodersOfTheCaribean
             string entityType = inputs[1];
             Col = int.Parse(inputs[2]);
             Row = int.Parse(inputs[3]);
-            EntityType = (EntityType)Enum.Parse(typeof(EntityType), entityType);
+            EntityType = (EntityTypeEnum)Enum.Parse(typeof(EntityTypeEnum), entityType);
         }
 
         protected Entity()
         {
         }
 
-        static internal Entity Factory(string[] inputs)
+        public override string ToString()
+        {
+            return $"{Col} {Row}";
+        }
+
+        static public Entity Factory(string[] inputs)
         {
             switch (inputs[1])
             {
@@ -188,7 +308,12 @@ namespace CodersOfTheCaribean
             }
         }
 
-        internal Tuple<int, int, int> GetCubeCoordinates()
+
+        private static int cubeDistance(Tuple<int, int, int> a, Tuple<int, int, int> b)
+        {
+            return (Math.Abs(a.Item1 - b.Item1) + Math.Abs(a.Item2 - b.Item2) + Math.Abs(a.Item3 - b.Item3)) / 2;
+        }
+        public Tuple<int, int, int> GetCubeCoordinates()
         {
             var x = Col - (Row - (Row & 1)) / 2;
             var z = Row;
@@ -203,39 +328,34 @@ namespace CodersOfTheCaribean
             return new Tuple<int, int>(col, row);
         }
 
-        private static float cubeDistance(Tuple<int, int, int> a, Tuple<int, int, int> b)
-        {
-            return (Math.Abs(a.Item1 - b.Item1) + Math.Abs(a.Item2 - b.Item2) + Math.Abs(a.Item3 - b.Item3)) / 2;
-        }
 
-        internal float GetDistanceTo(Entity entity)
+        public int GetDistanceTo(Entity entity)
         {
-            float result = cubeDistance(GetCubeCoordinates(), entity.GetCubeCoordinates());
+            int result = cubeDistance(GetCubeCoordinates(), entity.GetCubeCoordinates());
 
             //Console.Error.WriteLine(result);
             return result;
         }
 
-        internal float GetDistanceTo(int col, int row)
+        public int GetDistanceTo(int col, int row)
         {
             var x = col - (row - (row & 1)) / 2;
             var z = row;
             var y = -x - z;
             return cubeDistance(GetCubeCoordinates(), new Tuple<int, int, int>(x, y, z));
         }
-
-
     }
 
-    internal class CannonBall : Entity
+    public class CannonBall : Entity
     {
-        internal int ShipEntityId { get; set; }
+        // the ship that shot this
+        public int ShipEntityId { get; set; }
 
-        internal int ImpactInXTurns { get; set; }
+        public int ImpactInXTurns { get; set; }
 
-        internal Field AimedAtField { get; set; }
+        public Field AimedAtField { get; set; }
 
-        internal CannonBall(string[] inputs) : base(inputs)
+        public CannonBall(string[] inputs) : base(inputs)
         {
             int arg1 = int.Parse(inputs[4]);
             int arg2 = int.Parse(inputs[5]);
@@ -245,107 +365,20 @@ namespace CodersOfTheCaribean
         }
     }
 
-    internal class Mine : Entity
+    public class Mine : Entity
     {
-        internal Mine(string[] inputs) : base(inputs) { }
+        public Mine(string[] inputs) : base(inputs) { }
     }
 
 
-    internal class Ship : Entity
+    public class Ship : Entity
     {
-        internal class ShipPosition
-        {
-            internal Field[] FieldsTaken = new Field[3];
-
-            internal ShipPosition(int col, int row, Rotation shipRotation)
-            {
-                FieldsTaken[1] = Gameboard.Fields[col, row];
-                #region PositionCalculation
-                bool isEvenLine = row % 2 == 0;
-
-                switch (shipRotation)
-                {
-                    case Rotation.East:
-                        FieldsTaken[0] = Gameboard.Fields[col + 1, row];
-                        FieldsTaken[2] = Gameboard.Fields[col > 0 ? col - 1 : col, row];
-                        break;
-                    case Rotation.NorthEast:
-                        if (isEvenLine)
-                        {
-                            FieldsTaken[0] = Gameboard.Fields[col, row > 0 ? row - 1 : row];
-                            FieldsTaken[2] = Gameboard.Fields[col > 0 ? col - 1 : col, row + 1];
-                        }
-                        else
-                        {
-                            FieldsTaken[0] = Gameboard.Fields[col + 1, row > 0 ? row - 1 : row];
-                            FieldsTaken[2] = Gameboard.Fields[col, row + 1];
-                        }
-                        break;
-                    case Rotation.NorthWest:
-                        if (isEvenLine)
-                        {
-                            FieldsTaken[0] = Gameboard.Fields[col > 0 ? col - 1 : col, row > 0 ? row - 1 : row];
-                            FieldsTaken[2] = Gameboard.Fields[col, row + 1];
-                        }
-                        else
-                        {
-                            FieldsTaken[0] = Gameboard.Fields[col, row > 0 ? row - 1 : row];
-                            FieldsTaken[2] = Gameboard.Fields[col + 1, row + 1];
-                        }
-                        break;
-                    case Rotation.West:
-                        FieldsTaken[0] = Gameboard.Fields[col > 0 ? col - 1 : col, row];
-                        FieldsTaken[2] = Gameboard.Fields[col + 1, row];
-                        break;
-                    case Rotation.SouthWest:
-                        if (isEvenLine)
-                        {
-                            FieldsTaken[0] = Gameboard.Fields[col > 0 ? col - 1 : col, row + 1];
-                            FieldsTaken[2] = Gameboard.Fields[col, row > 0 ? row - 1 : row];
-                        }
-                        else
-                        {
-                            FieldsTaken[0] = Gameboard.Fields[col, row + 1];
-                            FieldsTaken[2] = Gameboard.Fields[col + 1, row - 1];
-                        }
-                        break;
-                    case Rotation.SouthEast:
-                        if (isEvenLine)
-                        {
-                            FieldsTaken[0] = Gameboard.Fields[col > 0 ? col - 1 : col, row > 0 ? row - 1 : row];
-                            FieldsTaken[2] = Gameboard.Fields[col, row + 1];
-                        }
-                        else
-                        {
-                            FieldsTaken[0] = Gameboard.Fields[col, row > 0 ? row - 1 : row];
-                            FieldsTaken[2] = Gameboard.Fields[col + 1, row + 1];
-                        }
-                        break;
-                    default: throw new NotImplementedException("Invalid Rotation");
-                }
-
-                #endregion
-            }
-        }
-
-        private ShipPosition _shipPosition;
-
-        internal ShipPosition CurrentPosition
-        {
-            get
-            {
-                if (_shipPosition == null)
-                    _shipPosition = new ShipPosition(Col, Row, CurrentRotation);
-                return _shipPosition;
-            }
-        }
-
-        internal Ship SimulateMove()
+        public Ship GetShipAfterSimulatedMove()
         {
             Ship result = (Ship)this.MemberwiseClone();
             int col = result.Col;
             int row = result.Row;
-            if(Speed == 0)
+            if (Speed == 0)
             {
                 return result;
             }
@@ -379,7 +412,15 @@ namespace CodersOfTheCaribean
             }
             else if (Speed == 2)
             {
-                throw new NotImplementedException();
+                switch (CurrentRotation)
+                {
+                    case Rotation.East: col += 2; break;
+                    case Rotation.NorthEast: col += 1; row -= 2; break;
+                    case Rotation.NorthWest: col -= 1; row -= 2; break;
+                    case Rotation.West: col -= 2; break;
+                    case Rotation.SouthWest: col -= 1; row += 2; break;
+                    case Rotation.SouthEast: col += 1; row += 2; break;
+                }
             }
 
             //sanitize result
@@ -398,20 +439,122 @@ namespace CodersOfTheCaribean
             return result;
         }
 
-        //internal ShipPosition GetNextPositionForCourse(int row, int col)
-        //{
+        public Field GetFieldBehind()
+        {
+            int row = Row;
+            int col = Col;
 
-        //}
 
-        internal Rotation CurrentRotation { get; set; }
+            switch (CurrentRotation)
+            {
+                case Rotation.East: col += 2; break;
+                case Rotation.NorthEast: col += 1; row -= 2; break;
+                case Rotation.NorthWest: col -= 1; row -= 2; break;
+                case Rotation.West: col -= 2; break;
+                case Rotation.SouthWest: col -= 1; row += 2; break;
+                case Rotation.SouthEast: col += 1; row += 2; break;
+            }
 
-        internal int Speed { get; set; }
+            //sanitize result
+            if (col < 0)
+                col = 0;
+            if (row < 0)
+                row = 0;
+            if (row > Gameboard.MAXHEIGHT)
+                row = Gameboard.MAXHEIGHT;
+            if (col > Gameboard.MAXWIDTH)
+                col = Gameboard.MAXWIDTH;
 
-        internal int StockOfRum { get; set; }
+            return Gameboard.Fields[col, row];
+        }
 
-        internal bool IsMyShip { get; set; }
+        public Field[] GetFieldsCovered()
+        {
+            Field[] fieldsCovered = new Field[3];
 
-        internal Ship(string[] inputs) : base(inputs)
+            #region PositionCalculation
+            fieldsCovered[1] = Gameboard.Fields[Col, Row];
+            int row = Row;
+            int col = Col;
+            bool isEvenLine = row % 2 == 0;
+
+            switch (CurrentRotation)
+            {
+                case Rotation.East:
+                    fieldsCovered[0] = Gameboard.Fields[col + 1, row];
+                    fieldsCovered[2] = Gameboard.Fields[col > 0 ? col - 1 : col, row];
+                    break;
+                case Rotation.NorthEast:
+                    if (isEvenLine)
+                    {
+                        fieldsCovered[0] = Gameboard.Fields[col, row > 0 ? row - 1 : row];
+                        fieldsCovered[2] = Gameboard.Fields[col > 0 ? col - 1 : col, row + 1];
+                    }
+                    else
+                    {
+                        fieldsCovered[0] = Gameboard.Fields[col + 1, row > 0 ? row - 1 : row];
+                        fieldsCovered[2] = Gameboard.Fields[col, row + 1];
+                    }
+                    break;
+                case Rotation.NorthWest:
+                    if (isEvenLine)
+                    {
+                        fieldsCovered[0] = Gameboard.Fields[col > 0 ? col - 1 : col, row > 0 ? row - 1 : row];
+                        fieldsCovered[2] = Gameboard.Fields[col, row + 1];
+                    }
+                    else
+                    {
+                        fieldsCovered[0] = Gameboard.Fields[col, row > 0 ? row - 1 : row];
+                        fieldsCovered[2] = Gameboard.Fields[col + 1, row + 1];
+                    }
+                    break;
+                case Rotation.West:
+                    fieldsCovered[0] = Gameboard.Fields[col > 0 ? col - 1 : col, row];
+                    fieldsCovered[2] = Gameboard.Fields[col + 1, row];
+                    break;
+                case Rotation.SouthWest:
+                    if (isEvenLine)
+                    {
+                        fieldsCovered[0] = Gameboard.Fields[col > 0 ? col - 1 : col, row + 1];
+                        fieldsCovered[2] = Gameboard.Fields[col, row > 0 ? row - 1 : row];
+                    }
+                    else
+                    {
+                        fieldsCovered[0] = Gameboard.Fields[col, row + 1];
+                        fieldsCovered[2] = Gameboard.Fields[col + 1, row > 0 ? row - 1 : row];
+                    }
+                    break;
+                case Rotation.SouthEast:
+                    if (isEvenLine)
+                    {
+                        fieldsCovered[0] = Gameboard.Fields[col, row + 1];
+                        fieldsCovered[2] = Gameboard.Fields[col > 0 ? col - 1 : col, row > 0 ? row - 1 : row];
+                    }
+                    else
+                    {
+                        fieldsCovered[0] = Gameboard.Fields[col + 1, row + 1];
+                        fieldsCovered[2] = Gameboard.Fields[col, row > 0 ? row - 1 : row];
+                    }
+                    break;
+                default: throw new NotImplementedException("Invalid Rotation");
+            }
+
+            #endregion PositionCalculation
+
+            return fieldsCovered;
+        }
+
+        public Rotation CurrentRotation { get; private set; }
+
+        public int Speed { get; private set; }
+
+        public bool HasFiredLastRound { get; set; }
+
+        public int StockOfRum { get; private set; }
+
+        public bool IsMyShip { get; private set; }
+
+        public Ship(string[] inputs) : base(inputs)
         {
             int arg1 = int.Parse(inputs[4]);
             int arg2 = int.Parse(inputs[5]);
@@ -421,9 +564,11 @@ namespace CodersOfTheCaribean
             Speed = arg2;
             StockOfRum = arg3;
             IsMyShip = arg4 == 1 ? true : false;
+            HasFiredLastRound = true; //in the first round we want to move so that we are not sitting ducks
         }
 
-        internal Ship(int col, int row, int speed, Rotation randDirection) : base()
+        //TODO
+        public Ship(int col, int row, int speed, Rotation randDirection) : base()
         {
             Col = col;
             Row = row;
@@ -431,7 +576,7 @@ namespace CodersOfTheCaribean
             this.CurrentRotation = randDirection;
         }
 
-        internal enum Rotation
+        public enum Rotation
         {
             East = 0,
             NorthEast = 1,
@@ -440,49 +585,94 @@ namespace CodersOfTheCaribean
             SouthWest = 4,
             SouthEast = 5
         }
-
-        //internal 
-
-        //internal Tuple<int,int> GetNextPosition 
     }
 
-    internal class Barrel : Entity
+    public class Barrel : Entity
     {
-        internal int AmountOfRum { get; set; }
+        public int AmountOfRum { get; set; }
 
-        internal Barrel(string[] inputs) : base(inputs)
+        public Barrel(string[] inputs) : base(inputs)
         {
             int arg1 = int.Parse(inputs[4]);
             AmountOfRum = arg1;
         }
     }
 
-    enum EntityType
-    {
-        SHIP,
-        BARREL,
-        MINE,
-        CANNONBALL
-    }
-
-    internal class Field
+    public class Field
     {
         private Random rndGen = new Random();
-        internal int Col { get; set; }
-        internal int Row { get; set; }
-        internal Entity EntityOnField { get; set; }
+        public int Col { get; set; }
+        public int Row { get; set; }
+        public Entity EntityOnField { get; set; }
 
-        internal int Score { get; set; }
+        public int Cost { get; set; }
+        
+        public Field Parent { get; set; }
 
-        internal Field RandMutate()
+
+        //TODO
+        public Field RandMutate()
         {
             Field result = (Field)this.MemberwiseClone();
             var randDirection = (Ship.Rotation)rndGen.Next(Enum.GetNames(typeof(Ship.Rotation)).Length);
             var ship = new Ship(Col, Row, 1, randDirection);
-            ship = ship.SimulateMove();
+            ship = ship.GetShipAfterSimulatedMove();
             result.Col = ship.Col;
             result.Row = ship.Row;
             return result;
+        }
+
+        public IEnumerable<Field> GetNeighbours()
+        {
+            List<Field> neighbours = new List<Field>();
+            int col = Col;
+            int row = Row;
+            if (row % 2 == 0)
+            {
+                safeAdd(neighbours, col - 1, row - 1);
+                safeAdd(neighbours, col - 1, row);
+                safeAdd(neighbours, col - 1, row + 1);
+                safeAdd(neighbours, col, row + 1);
+                safeAdd(neighbours, col + 1, row);
+                safeAdd(neighbours, col, row - 1);
+            }
+            else
+            {
+                safeAdd(neighbours, col, row - 1);
+                safeAdd(neighbours, col - 1, row);
+                safeAdd(neighbours, col, row + 1);
+                safeAdd(neighbours, col + 1, row + 1);
+                safeAdd(neighbours, col + 1, row);
+                safeAdd(neighbours, col + 1, row - 1);
+            }
+
+            return neighbours;
+        }
+
+        public int GetDistanceTo(Field field)
+        {
+            int result = cubeDistance(GetCubeCoordinates(), field.GetCubeCoordinates());
+
+            //Console.Error.WriteLine(result);
+            return result;
+        }
+
+        private static int cubeDistance(Tuple<int, int, int> a, Tuple<int, int, int> b)
+        {
+            return (Math.Abs(a.Item1 - b.Item1) + Math.Abs(a.Item2 - b.Item2) + Math.Abs(a.Item3 - b.Item3)) / 2;
+        }
+        public Tuple<int, int, int> GetCubeCoordinates()
+        {
+            var x = Col - (Row - (Row & 1)) / 2;
+            var z = Row;
+            var y = -x - z;
+            return new Tuple<int, int, int>(x, y, z);
+        }
+
+        private void safeAdd(List<Field> neighbours, int col, int row)
+        {
+            if (col >= 0 && row >= 0 && col <= Gameboard.MAXWIDTH && row <= Gameboard.MAXHEIGHT)
+                neighbours.Add(Gameboard.Fields[col, row]);
         }
 
         public override string ToString()
@@ -506,17 +696,24 @@ namespace CodersOfTheCaribean
             return this.Col == other.Col && this.Row == other.Row;
         }
 
+        internal Field CloneLocation()
+        {
+            var b = new Field();
+            b.Row = this.Row;
+            b.Col = this.Col;
+            return b;
+        }
     }
 
     static class Gameboard
     {
-        internal const int MAXHEIGHT = 20;
-        internal const int MAXWIDTH = 22;
+        public const int MAXHEIGHT = 20;
+        public const int MAXWIDTH = 22;
 
 
-        static internal Field[,] Fields;
+        static public Field[,] Fields;
 
-        static internal List<Entity> AllEntities = new List<Entity>();
+        private static List<Entity> _allEntities = new List<Entity>();
         static Gameboard()
         {
             Fields = new Field[MAXWIDTH + 1, MAXHEIGHT + 1];
@@ -533,163 +730,227 @@ namespace CodersOfTheCaribean
             }
         }
 
-        internal static List<Ship> Update(int entityCount)
+        public static IEnumerable<CannonBall> GetCannonballs()
         {
+            return _allEntities.Where(x => x.EntityType == Entity.EntityTypeEnum.CANNONBALL).Select(x => (CannonBall)x);
+        }
+
+        public static void UpdateBoard(int entityCount)
+        {
+            Dictionary<int, Ship> oldShips = getShipDictionary();
+
             Program.StartFunction("Gameboard.Update");
-            AllEntities.Clear();
+            _allEntities.Clear();
             for (int row = 0; row <= MAXHEIGHT; row++)
             {
                 for (int col = 0; col <= MAXWIDTH; col++)
                 {
-                    Fields[col, row].Score = 0;
+                    Fields[col, row].Cost = 100;
                 }
             }
-            List<Ship> playerShips = new List<Ship>();
+
             for (int i = 0; i < entityCount; i++)
             {
                 string[] inputs = Console.ReadLine().Split(' ');
                 var entity = Entity.Factory(inputs);
                 Fields[entity.Col, entity.Row].EntityOnField = entity;
 
-                if (entity.EntityType == EntityType.SHIP && (entity as Ship).IsMyShip)
-                    playerShips.Add(entity as Ship);
-
                 switch (entity.EntityType)
                 {
-                    case EntityType.BARREL:
-                        Fields[entity.Col, entity.Row].Score += (entity as Barrel).AmountOfRum;
-                        addAdjacent(entity.Col, entity.Row, 6);
-                        addFarAdjacent(entity.Col, entity.Row, 3);
+                    case Entity.EntityTypeEnum.BARREL:
+                        Fields[entity.Col, entity.Row].Cost -= (entity as Barrel).AmountOfRum;
                         break;
-                    case EntityType.CANNONBALL:
-                        Fields[entity.Col, entity.Row].Score -= 100;
-                        addAdjacent(entity.Col, entity.Row, -50);
-                        addFarAdjacent(entity.Col, entity.Row, -25);
+                    case Entity.EntityTypeEnum.CANNONBALL:
+                        Fields[entity.Col, entity.Row].Cost += 1000;
                         break;
-                    case EntityType.MINE:
-                        Fields[entity.Col, entity.Row].Score -= 100;
-                        addAdjacent(entity.Col, entity.Row, -50);
-                        addFarAdjacent(entity.Col, entity.Row, -5);
+                    case Entity.EntityTypeEnum.MINE:
+                        Fields[entity.Col, entity.Row].Cost += 1000;
                         break;
-                    case EntityType.SHIP:
+                    case Entity.EntityTypeEnum.SHIP:
                         if (!(entity as Ship).IsMyShip)
                         {
-                            Fields[entity.Col, entity.Row].Score += 5;
-                            addAdjacent(entity.Col, entity.Row, +3);
-                            addFarAdjacent(entity.Col, entity.Row, +1);
+                            //ENEMY
+                            Fields[entity.Col, entity.Row].Cost += 10000;
+                        }
+                        else
+                        {
+                            //MY SHIP - lower score than enemy cause we don't want to block us
+                            Fields[entity.Col, entity.Row].Cost += 10000;
+
+                            //Set previous values
+                            if (oldShips.ContainsKey(entity.EntityId))
+                                (entity as Ship).HasFiredLastRound = oldShips[entity.EntityId].HasFiredLastRound;
                         }
                         break;
                 }
 
-                AllEntities.Add(entity);
+                _allEntities.Add(entity);
             }
 
-            CalculateFieldValues();
-
-            Program.StopFunction("Gameboard.Update", Program.LogLevel.INFO);
-            return playerShips;
+            Program.StopFunction("Gameboard.Update", Program.LogLevel.TRACE);
         }
 
-        private static void addFarAdjacent(int col, int row, int v)
+        public static IEnumerable<Ship> GetPlayerShips()
         {
-            if (row % 2 == 0)
-            {
-                safeAdd(col - 2, row, v);
-                safeAdd(col - 2, row + 1, v);
-                safeAdd(col - 1, row + 2, v);
-                safeAdd(col, row + 2, v);
-                safeAdd(col + 1, row + 2, v);
-                safeAdd(col + 1, row + 1, v);
-                safeAdd(col + 2, row, v);
-                safeAdd(col + 1, row - 1, v);
-                safeAdd(col + 1, row - 2, v);
-                safeAdd(col, row - 2, v);
-                safeAdd(col - 1, row - 2, v);
-                safeAdd(col - 2, row - 1, v);
-
-            }
-            else
-            {
-                safeAdd(col - 2, row, v);
-                safeAdd(col - 1, row + 1, v);
-                safeAdd(col - 1, row + 2, v);
-                safeAdd(col, row + 2, v);
-                safeAdd(col + 1, row + 2, v);
-                safeAdd(col + 2, row + 1, v);
-                safeAdd(col + 2, row, v);
-                safeAdd(col + 2, row - 1, v);
-                safeAdd(col + 1, row - 2, v);
-                safeAdd(col, row - 2, v);
-                safeAdd(col - 1, row - 2, v);
-                safeAdd(col - 1, row - 1, v);
-            }
+            return _allEntities.Where(x => x.EntityType == Entity.EntityTypeEnum.SHIP && (x as Ship).IsMyShip).Select(x => (Ship)x);
         }
 
-        private static void addAdjacent(int col, int row, int v)
+        private static Dictionary<int, Ship> getShipDictionary()
         {
-            if (row % 2 == 0)
-            {
-                safeAdd(col - 1, row - 1, v);
-                safeAdd(col - 1, row, v);
-                safeAdd(col - 1, row + 1, v);
-                safeAdd(col, row + 1, v);
-                safeAdd(col + 1, row, v);
-                safeAdd(col, row - 1, v);
-            }
-            else
-            {
-                safeAdd(col, row - 1, v);
-                safeAdd(col - 1, row, v);
-                safeAdd(col, row + 1, v);
-                safeAdd(col + 1, row + 1, v);
-                safeAdd(col + 1, row, v);
-                safeAdd(col + 1, row - 1, v);
-            }
+            return GetPlayerShips().ToDictionary(x => x.EntityId, x => x);
         }
 
-        internal static void AddRadiusFields(int col, int row, List<Field> takenFields)
+        public static IEnumerable<Ship> GetEnemyShipsByDistance(Ship playerShip)
         {
-
-            if (row % 2 == 0)
-            {
-                safeAddField(col - 1, row - 1, takenFields);
-                safeAddField(col - 1, row, takenFields);
-                safeAddField(col - 1, row + 1, takenFields);
-                safeAddField(col, row + 1, takenFields);
-                safeAddField(col + 1, row, takenFields);
-                safeAddField(col, row - 1, takenFields);
-            }
-            else
-            {
-                safeAddField(col, row - 1, takenFields);
-                safeAddField(col - 1, row, takenFields);
-                safeAddField(col, row + 1, takenFields);
-                safeAddField(col + 1, row + 1, takenFields);
-                safeAddField(col + 1, row, takenFields);
-                safeAddField(col + 1, row - 1, takenFields);
-            }
+            return _allEntities
+                       .Where(x => x.EntityType == Entity.EntityTypeEnum.SHIP && (x as Ship).IsMyShip == false)
+                       .OrderBy(x => playerShip.GetDistanceTo(x))
+                       .Select(x => (Ship)x);
         }
 
-        private static void safeAdd(int col, int row, int v)
+        public static IEnumerable<Mine> GetMines()
         {
-            //Console.Error.WriteLine($"SAFEADD {col} {row}");
-            if (col > 0 && row > 0 && col <= MAXWIDTH && row <= MAXHEIGHT)
-                Fields[col, row].Score += v;
+            return _allEntities.Where(x => x.EntityType == Entity.EntityTypeEnum.MINE).Select(x => (Mine)x);
         }
-
-        private static void safeAddField(int col, int row,List<Field> fields)
+        public static IEnumerable<Ship> GetShips()
         {
-            //Console.Error.WriteLine($"SAFEADD {col} {row}");
-            if (col > 0 && row > 0 && col <= MAXWIDTH && row <= MAXHEIGHT && !fields.Contains(Gameboard.Fields[col, row]))
-                fields.Add( Gameboard.Fields[col, row] );
+            return _allEntities.Where(x => x.EntityType == Entity.EntityTypeEnum.SHIP).Select(x => (Ship)x);
         }
 
-        private static void CalculateFieldValues()
+        public static IEnumerable<Barrel> GetBarrels()
         {
-
+            return _allEntities.Where(x => x.EntityType == Entity.EntityTypeEnum.BARREL).Select(x => (Barrel)x);
         }
+
+
+        //public static Field[] AStar(Field start, Field goal)
+        //{
+        //    var frontier = new PriorityQueue<Field>();
+        //    frontier.Enqueue(start, 0);
+        //    var came_from = new Dictionary<Field, Field>();
+        //    var cost_so_far = new Dictionary<Field, int>();
+        //    came_from[start] = null;
+        //    cost_so_far[start] = 0;
+
+        //    while (frontier.Count != 0)
+        //    {
+        //        Program.Log("TEST", Program.LogLevel.WARN);
+        //        var current = (Field)frontier.Dequeue();
+
+        //        if (current == goal)
+        //            break;
+
+        //        foreach (var next in current.GetNeighbours())
+        //        {
+        //            var new_cost = cost_so_far[current] + next.Cost;
+        //            if (!cost_so_far.ContainsKey(next) || new_cost < cost_so_far[next])
+        //            {
+        //                cost_so_far[next] = new_cost;
+        //                int priority = new_cost;
+        //                frontier.Enqueue(next, priority);
+        //                came_from[next] = current;
+        //            }
+        //        }
+        //    }
+        //    return came_from.Keys.ToArray();
+        //}
 
     }
+
+    public class AStarSearch
+    {
+        public Dictionary<Field, Field> cameFrom
+            = new Dictionary<Field, Field>();
+        public Dictionary<Field, double> costSoFar
+            = new Dictionary<Field, double>();
+
+        public ArrayList Path = new ArrayList();
+
+        // Note: a generic version of A* would abstract over Location and
+        // also Heuristic
+        static public double Heuristic(Field a, Field b)
+        {
+            return a.GetDistanceTo(b);
+        }
+
+        public AStarSearch(Field start, Field goal)
+        {
+            var frontier = new PriorityQueue<Field>();
+            frontier.Enqueue(start, 0);
+
+            cameFrom[start] = null;
+            costSoFar[start] = 0;
+            Path.Add(start);
+
+            while (frontier.Count > 0)
+            {
+                var current = frontier.Dequeue();
+
+                if (current.Equals(goal))
+                {
+                    break;
+                }
+
+                foreach (var next in current.GetNeighbours())
+                {
+                    double newCost = costSoFar[current] + next.Cost;
+
+                    if (!costSoFar.ContainsKey(next)
+                        || newCost < costSoFar[next])
+                    {
+                        costSoFar[next] = newCost;
+                        double priority = Heuristic(next, goal);
+                        frontier.Enqueue(next, priority);
+                        cameFrom[next] = current;                        
+                    }
+                }
+            }
+        }
+    }
+
+    public class PriorityQueue<T>
+    {
+        // I'm using an unsorted array for this example, but ideally this
+        // would be a binary heap. There's an open issue for adding a binary
+        // heap to the standard C# library: https://github.com/dotnet/corefx/issues/574
+        //
+        // Until then, find a binary heap class:
+        // * https://github.com/BlueRaja/High-Speed-Priority-Queue-for-C-Sharp
+        // * http://visualstudiomagazine.com/articles/2012/11/01/priority-queues-with-c.aspx
+        // * http://xfleury.github.io/graphsearch.html
+        // * http://stackoverflow.com/questions/102398/priority-queue-in-net
+
+        private List<Tuple<T, double>> elements = new List<Tuple<T, double>>();
+
+        public int Count
+        {
+            get { return elements.Count; }
+        }
+
+        public void Enqueue(T item, double priority)
+        {
+            elements.Add(Tuple.Create(item, priority));
+        }
+
+        public T Dequeue()
+        {
+            int bestIndex = 0;
+
+            for (int i = 0; i < elements.Count; i++)
+            {
+                if (elements[i].Item2 < elements[bestIndex].Item2)
+                {
+                    bestIndex = i;
+                }
+            }
+
+            T bestItem = elements[bestIndex].Item1;
+            elements.RemoveAt(bestIndex);
+            return bestItem;
+        }
+    }
+
+
 
 }
 
