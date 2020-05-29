@@ -12,7 +12,12 @@ namespace CodersOfTheCaribean
         {
 
             int turnCounter = 0;
-            bool firedLastTurn = false;
+            bool[] firedLastTurn = new bool[3];
+            firedLastTurn[0] = true;
+            firedLastTurn[1] = true;
+            firedLastTurn[2] = true;
+            System.Diagnostics.Stopwatch sw = new System.Diagnostics.Stopwatch();
+
             int lastRow = -1;
             int lastCol = -1;
 
@@ -21,63 +26,89 @@ namespace CodersOfTheCaribean
             // game loop
             while (true)
             {
+                sw.Start();
                 takenFields.Clear();
-                takenShots.Clear();
+                takenShots = GetShotsInTheAir();
                 ++turnCounter;
                 int myShipCount = int.Parse(Console.ReadLine()); // the number of remaining ships
                 int entityCount = int.Parse(Console.ReadLine()); // the number of entities (e.g. ships, mines or cannonballs)
-
+                int shipCount = 0;
                 var myShips = Gameboard.Update(entityCount);
-                foreach(var ship in myShips)
+                foreach (var ship in myShips.OrderBy(x => x.EntityId))
                 {
-                    // Write an action using Console.WriteLine()
-                    // To debug: Console.Error.WriteLine("Debug messages...");
-
-                    if (firedLastTurn == false)
+                    if (firedLastTurn[shipCount] == false)
                     {
                         var closestEnemy = (Ship)Gameboard.AllEntities
                             .Where(x => x.EntityType == EntityType.SHIP && (x as Ship).IsMyShip == false)
                             .OrderBy(x => ship.GetDistanceTo(x))
                             .First();
 
-                        if (ship.GetDistanceTo(closestEnemy) <= 6)
+                        var distance = ship.GetDistanceTo(closestEnemy);
+                        if (distance <= 9)
                         {
-                            if (!takenShots.Contains(Gameboard.Fields[closestEnemy.Col, closestEnemy.Row]))
-                            {
-                                Console.WriteLine($"FIRE {closestEnemy.Col} {closestEnemy.Row}");
-                                firedLastTurn = true;
-                                takenShots.Add(Gameboard.Fields[closestEnemy.Col, closestEnemy.Row]);
-                                continue;
-                            } else
-                            {
-                                Console.WriteLine($"FIRE {closestEnemy.CurrentPosition.FieldsTaken[0].Col} {closestEnemy.CurrentPosition.FieldsTaken[0].Row}");
-                                firedLastTurn = true;
-                                takenShots.Add(closestEnemy.CurrentPosition.FieldsTaken[0]);
-                                continue;
-                            }
+                            Field shootAtField = GetTarget(takenShots, closestEnemy, distance);
+                            Console.WriteLine($"FIRE {shootAtField}");
+                            firedLastTurn[shipCount] = true;
                         }
+                    } 
+                    else
+                    {
+                        firedLastTurn[shipCount] = false;
                     }
 
-                    firedLastTurn = false;
                     var nextField = Gameboard.Fields.Cast<Field>()
-                        .Where(x =>!takenFields.Contains(x))
-                        .OrderByDescending(x => x.Score - Math.Sqrt(ship.GetDistanceTo(x.Col,x.Row))).First();
-                    //var lastField = Gameboard.Fields.Cast<Field>().OrderBy(x => x.Score).First();
-                    //Console.Error.WriteLine($"Highest Score: {nextField.Score} Distance: {ship.GetDistanceTo(nextField.Col, nextField.Row)}");
-                    //Console.Error.WriteLine($"Lowest Score: {lastField.Score} Distance: {ship.GetDistanceTo(lastField.Col, lastField.Row)}");
+                        .Where(x => !takenFields.Contains(x))
+                        .OrderByDescending(x => x.Score - Math.Sqrt(ship.GetDistanceTo(x.Col, x.Row))).First();
+
                     takenFields.Add(nextField);
 
                     Console.WriteLine($"MOVE {nextField.Col} {nextField.Row}");
 
-
-                    //Console.Error.WriteLine($"ShipPosition: COL {ship.Col} ROW {ship.Row}");
-                    //Console.Error.WriteLine($"EnemyPosition: COL {enemy.Col} ROW {enemy.Row}");
-                    //Console.Error.WriteLine($"Distance: {ship.GetDistanceTo(enemy)}");
-
+                    shipCount++;
                 }
+                sw.Stop();
+                Console.Error.WriteLine(sw.ElapsedMilliseconds);
+                sw.Reset();
+
             }
         }
 
+        private static List<Field> GetShotsInTheAir()
+        {
+            List<Field> result = new List<Field>();
+
+            foreach (var shot in Gameboard.AllEntities.Where(x => x.EntityType == EntityType.CANNONBALL))
+            {
+                result.Add(Gameboard.Fields[shot.Col, shot.Row]);
+            }
+            return result;
+        }
+
+        private static Field GetTarget(List<Field> takenShots, Ship closestEnemy, float distance)
+        {
+            //Console.Error.WriteLine($"Distance {distance} {closestEnemy.CurrentRotation.ToString()}");
+            int roundsTillImpact = (int)Math.Round(1 + distance / 3, 0);
+
+            Field fieldWhereIsShipGonnaBe = GetDesination(closestEnemy, roundsTillImpact);
+            while (takenShots.Contains(fieldWhereIsShipGonnaBe))
+            {
+                fieldWhereIsShipGonnaBe =  fieldWhereIsShipGonnaBe.RandMutate();
+            }
+            takenShots.Add(fieldWhereIsShipGonnaBe);
+
+            return fieldWhereIsShipGonnaBe;
+        }
+
+        private static Field GetDesination(Ship closestEnemy, int roundsTillImpact)
+        {
+            while (--roundsTillImpact >= 0)
+            {
+                //Console.Error.WriteLine($"Before Simulate Move: {closestEnemy.Col} {closestEnemy.Row} {roundsTillImpact}");
+                closestEnemy = closestEnemy.SimulateMove();
+            }
+
+            return Gameboard.Fields[closestEnemy.Col, closestEnemy.Row];
+        }
     }
 
 
@@ -101,14 +132,18 @@ namespace CodersOfTheCaribean
             EntityType = (EntityType)Enum.Parse(typeof(EntityType), entityType);
         }
 
+        protected Entity()
+        {
+        }
+
         static internal Entity Factory(string[] inputs)
         {
             switch (inputs[1])
             {
-                case "SHIP": return new Ship(inputs); 
-                case "MINE": return new Mine(inputs); 
-                case "CANNONBALL": return new CannonBall(inputs); 
-                case "BARREL": return new Barrel(inputs); 
+                case "SHIP": return new Ship(inputs);
+                case "MINE": return new Mine(inputs);
+                case "CANNONBALL": return new CannonBall(inputs);
+                case "BARREL": return new Barrel(inputs);
                 default: throw new NotImplementedException($"unknown entity type: {inputs[1]}");
             }
         }
@@ -193,27 +228,28 @@ namespace CodersOfTheCaribean
                     case Rotation.East:
                         FieldsTaken[0] = Gameboard.Fields[col + 1, row];
                         FieldsTaken[2] = Gameboard.Fields[col > 0 ? col - 1 : col, row];
-                        break;                   
+                        break;
                     case Rotation.NorthEast:
                         if (isEvenLine)
                         {
-                            FieldsTaken[0] = Gameboard.Fields[col    , row > 0 ? row - 1 : row];
+                            FieldsTaken[0] = Gameboard.Fields[col, row > 0 ? row - 1 : row];
                             FieldsTaken[2] = Gameboard.Fields[col > 0 ? col - 1 : col, row + 1];
-                        } else
+                        }
+                        else
                         {
                             FieldsTaken[0] = Gameboard.Fields[col + 1, row > 0 ? row - 1 : row];
-                            FieldsTaken[2] = Gameboard.Fields[col    , row + 1];
+                            FieldsTaken[2] = Gameboard.Fields[col, row + 1];
                         }
                         break;
                     case Rotation.NorthWest:
                         if (isEvenLine)
                         {
                             FieldsTaken[0] = Gameboard.Fields[col > 0 ? col - 1 : col, row > 0 ? row - 1 : row];
-                            FieldsTaken[2] = Gameboard.Fields[col    , row + 1];
+                            FieldsTaken[2] = Gameboard.Fields[col, row + 1];
                         }
                         else
                         {
-                            FieldsTaken[0] = Gameboard.Fields[col    , row > 0 ? row - 1 : row];
+                            FieldsTaken[0] = Gameboard.Fields[col, row > 0 ? row - 1 : row];
                             FieldsTaken[2] = Gameboard.Fields[col + 1, row + 1];
                         }
                         break;
@@ -225,7 +261,7 @@ namespace CodersOfTheCaribean
                         if (isEvenLine)
                         {
                             FieldsTaken[0] = Gameboard.Fields[col > 0 ? col - 1 : col, row + 1];
-                            FieldsTaken[2] = Gameboard.Fields[col, row > 0 ?  row - 1 : row];
+                            FieldsTaken[2] = Gameboard.Fields[col, row > 0 ? row - 1 : row];
                         }
                         else
                         {
@@ -253,6 +289,7 @@ namespace CodersOfTheCaribean
         }
 
         private ShipPosition _shipPosition;
+
         internal ShipPosition CurrentPosition
         {
             get
@@ -261,6 +298,61 @@ namespace CodersOfTheCaribean
                     _shipPosition = new ShipPosition(Col, Row, CurrentRotation);
                 return _shipPosition;
             }
+        }
+
+        internal Ship SimulateMove()
+        {
+
+            Ship result = (Ship)this.MemberwiseClone();
+            int col = result.Col;
+            int row = result.Row;
+            if (Speed <= 1)
+            {
+                if (row % 2 == 0)
+                {
+                    switch (result.CurrentRotation)
+                    {
+                        case Rotation.East: col++; break;
+                        case Rotation.NorthEast: row--; break;
+                        case Rotation.NorthWest: row--; col--; break;
+                        case Rotation.SouthEast: row++; break;
+                        case Rotation.SouthWest: row++; col--; break;
+                        case Rotation.West: col--; break;
+                    }
+                }
+                else
+                {
+                    switch (result.CurrentRotation)
+                    {
+                        case Rotation.East: col++; break;
+                        case Rotation.NorthEast: col++; row--; break;
+                        case Rotation.NorthWest: row--; break;
+                        case Rotation.SouthEast: row++; col++; break;
+                        case Rotation.SouthWest: row++; break;
+                        case Rotation.West: col--; break;
+                    }
+                }
+
+            }
+            else if (Speed == 2)
+            {
+                throw new NotImplementedException();
+            }
+
+            //sanitize result
+            if (col < 0)
+                col = 0;
+            if (row < 0)
+                row = 0;
+            if (row > Gameboard.MAXHEIGHT)
+                row = Gameboard.MAXHEIGHT;
+            if (col > Gameboard.MAXWIDTH)
+                col = Gameboard.MAXWIDTH;
+
+            result.Col = col;
+            result.Row = row;
+
+            return result;
         }
 
         //internal ShipPosition GetNextPositionForCourse(int row, int col)
@@ -286,6 +378,14 @@ namespace CodersOfTheCaribean
             Speed = arg2;
             StockOfRum = arg3;
             IsMyShip = arg4 == 1 ? true : false;
+        }
+
+        internal Ship(int col, int row, int speed, Rotation randDirection) : base()
+        {
+            Col = col;
+            Row = row;
+            this.Speed = speed;
+            this.CurrentRotation = randDirection;
         }
 
         internal enum Rotation
@@ -324,11 +424,45 @@ namespace CodersOfTheCaribean
 
     internal class Field
     {
+        private Random rndGen = new Random();
         internal int Col { get; set; }
         internal int Row { get; set; }
         internal Entity EntityOnField { get; set; }
 
         internal int Score { get; set; }
+
+        internal Field RandMutate()
+        {
+            Field result = (Field)this.MemberwiseClone();
+            var randDirection = (Ship.Rotation)rndGen.Next(Enum.GetNames(typeof(Ship.Rotation)).Length);
+            var ship = new Ship(Col, Row, 1, randDirection);
+            ship.SimulateMove();
+            result.Col = ship.Col;
+            result.Row = ship.Row;
+            return result;
+        }
+
+        public override string ToString()
+        {
+            return $"{Col} {Row}";
+        }
+        public override bool Equals(object obj)
+        {
+            if (obj == null) return false;
+            Field objAsField = obj as Field;
+            if (objAsField == null) return false;
+            else return Equals(objAsField);
+        }
+        public override int GetHashCode()
+        {
+            return (Col << 8) + Row;
+        }
+        public bool Equals(Field other)
+        {
+            if (other == null) return false;
+            return this.Col == other.Col && this.Row == other.Row;
+        }
+
     }
 
     static class Gameboard
@@ -376,7 +510,7 @@ namespace CodersOfTheCaribean
                 if (entity.EntityType == EntityType.SHIP && (entity as Ship).IsMyShip)
                     playerShips.Add(entity as Ship);
 
-                switch(entity.EntityType)
+                switch (entity.EntityType)
                 {
                     case EntityType.BARREL:
                         Fields[entity.Col, entity.Row].Score += (entity as Barrel).AmountOfRum;
@@ -415,34 +549,34 @@ namespace CodersOfTheCaribean
         {
             if (row % 2 == 0)
             {
-                safeAdd(col-2, row, v);
-                safeAdd(col-2, row+1, v);
-                safeAdd(col-1, row+2, v);
-                safeAdd(col, row+2, v);
-                safeAdd(col+1, row+2, v);
-                safeAdd(col+1, row+1, v);
-                safeAdd(col+2, row, v);
-                safeAdd(col+1, row-1, v);
-                safeAdd(col+1, row-2, v);
-                safeAdd(col, row-2, v);
-                safeAdd(col-1, row-2, v);
-                safeAdd(col-2, row-1, v);
+                safeAdd(col - 2, row, v);
+                safeAdd(col - 2, row + 1, v);
+                safeAdd(col - 1, row + 2, v);
+                safeAdd(col, row + 2, v);
+                safeAdd(col + 1, row + 2, v);
+                safeAdd(col + 1, row + 1, v);
+                safeAdd(col + 2, row, v);
+                safeAdd(col + 1, row - 1, v);
+                safeAdd(col + 1, row - 2, v);
+                safeAdd(col, row - 2, v);
+                safeAdd(col - 1, row - 2, v);
+                safeAdd(col - 2, row - 1, v);
 
             }
             else
             {
                 safeAdd(col - 2, row, v);
                 safeAdd(col - 1, row + 1, v);
-                safeAdd(col- 1, row+2, v);
-                safeAdd(col, row+2, v);
-                safeAdd(col+1, row+2, v);
-                safeAdd(col+2, row+1, v);
-                safeAdd(col+2, row, v);
-                safeAdd(col+2, row-1, v);
-                safeAdd(col+1, row-2, v);
-                safeAdd(col, row-2, v);
-                safeAdd(col-1, row-2, v);
-                safeAdd(col-1, row-1, v);
+                safeAdd(col - 1, row + 2, v);
+                safeAdd(col, row + 2, v);
+                safeAdd(col + 1, row + 2, v);
+                safeAdd(col + 2, row + 1, v);
+                safeAdd(col + 2, row, v);
+                safeAdd(col + 2, row - 1, v);
+                safeAdd(col + 1, row - 2, v);
+                safeAdd(col, row - 2, v);
+                safeAdd(col - 1, row - 2, v);
+                safeAdd(col - 1, row - 1, v);
             }
         }
 
@@ -450,20 +584,21 @@ namespace CodersOfTheCaribean
         {
             if (row % 2 == 0)
             {
-                safeAdd(col-1, row-1, v);
-                safeAdd(col-1, row, v);
-                safeAdd(col-1, row+1, v);
-                safeAdd(col, row+1, v);
-                safeAdd(col+1, row, v);
-                safeAdd(col, row-1, v);
-            } else
+                safeAdd(col - 1, row - 1, v);
+                safeAdd(col - 1, row, v);
+                safeAdd(col - 1, row + 1, v);
+                safeAdd(col, row + 1, v);
+                safeAdd(col + 1, row, v);
+                safeAdd(col, row - 1, v);
+            }
+            else
             {
-                safeAdd(col, row-1, v);
-                safeAdd(col-1, row, v);
-                safeAdd(col, row+1, v);
-                safeAdd(col+1, row+1, v);
-                safeAdd(col+1, row, v);
-                safeAdd(col+1, row-1, v);
+                safeAdd(col, row - 1, v);
+                safeAdd(col - 1, row, v);
+                safeAdd(col, row + 1, v);
+                safeAdd(col + 1, row + 1, v);
+                safeAdd(col + 1, row, v);
+                safeAdd(col + 1, row - 1, v);
             }
         }
 
