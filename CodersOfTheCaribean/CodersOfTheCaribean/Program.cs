@@ -19,9 +19,8 @@ namespace CodersOfTheCaribean
             ERROR = 1,
             WARN = 3,
             INFO = 4,
-            TRACE = 5,
+            TRACE = 5
         }
-
 
         public static void Log(string log, LogLevel logLevel)
         {
@@ -71,12 +70,6 @@ namespace CodersOfTheCaribean
                                               .OrderBy(x => x.EntityId))
                 {
                     StartFunction("ShipLogic");
-
-                    //if (shipCount++ > 0)
-                    //{
-                    //    Console.WriteLine("WAIT");
-                    //    break;
-                    //}
 
                     var barrels = Gameboard.GetBarrels();
 
@@ -160,16 +153,6 @@ namespace CodersOfTheCaribean
 
             AStarSearch search = new AStarSearch(startField, targetField);
 
-            //Field lastCurrent = null;
-            //var current = search.cameFrom[targetField];
-            //while(current != null)
-            //{
-            //    lastCurrent = current.CloneLocation();
-            //    current = search.cameFrom[current];
-            //}
-
-            //return lastCurrent;
-
             foreach (var kvp in search.cameFrom)
             {
                 if (kvp.Value != null)
@@ -182,24 +165,6 @@ namespace CodersOfTheCaribean
             var gotoNextField = search.cameFrom[Gameboard.Fields[ship.Col, ship.Row]] ?? targetField;
             Log($"FROM {gotoNextField}", LogLevel.WARN);
             return gotoNextField;
-
-            //List<Field> path = new List<Field>();
-            //var current = search.cameFrom[startField];
-            //while(current != null)
-            //{
-            //    path.Add(current);
-            //    current = search.cameFrom[current];
-            //}            
-
-            //Log($"Path.Length {path.Count()}", LogLevel.WARN);
-
-            //for (int i = 0; i < path.Count(); i++)
-            //    Log($"Path[{i}]: {path[i].ToString()}", LogLevel.WARN);
-
-            //var gotoField = path.FirstOrDefault(x => !x.Equals(startField));
-            //if(gotoField == null)
-            //    gotoField = Gameboard.Fields[0,0];
-            //return gotoField;
         }
 
         private static IEnumerable<Field> getBlockedFields(Ship ship)
@@ -258,10 +223,6 @@ namespace CodersOfTheCaribean
             return Gameboard.Fields[closestEnemy.Col, closestEnemy.Row];
         }
     }
-
-
-
-
 
     //USES odd-r coordinates
     public abstract class Entity
@@ -332,8 +293,7 @@ namespace CodersOfTheCaribean
         public int GetDistanceTo(Entity entity)
         {
             int result = cubeDistance(GetCubeCoordinates(), entity.GetCubeCoordinates());
-
-            //Console.Error.WriteLine(result);
+            
             return result;
         }
 
@@ -821,40 +781,6 @@ namespace CodersOfTheCaribean
         {
             return _allEntities.Where(x => x.EntityType == Entity.EntityTypeEnum.BARREL).Select(x => (Barrel)x);
         }
-
-
-        //public static Field[] AStar(Field start, Field goal)
-        //{
-        //    var frontier = new PriorityQueue<Field>();
-        //    frontier.Enqueue(start, 0);
-        //    var came_from = new Dictionary<Field, Field>();
-        //    var cost_so_far = new Dictionary<Field, int>();
-        //    came_from[start] = null;
-        //    cost_so_far[start] = 0;
-
-        //    while (frontier.Count != 0)
-        //    {
-        //        Program.Log("TEST", Program.LogLevel.WARN);
-        //        var current = (Field)frontier.Dequeue();
-
-        //        if (current == goal)
-        //            break;
-
-        //        foreach (var next in current.GetNeighbours())
-        //        {
-        //            var new_cost = cost_so_far[current] + next.Cost;
-        //            if (!cost_so_far.ContainsKey(next) || new_cost < cost_so_far[next])
-        //            {
-        //                cost_so_far[next] = new_cost;
-        //                int priority = new_cost;
-        //                frontier.Enqueue(next, priority);
-        //                came_from[next] = current;
-        //            }
-        //        }
-        //    }
-        //    return came_from.Keys.ToArray();
-        //}
-
     }
 
     public class AStarSearch
