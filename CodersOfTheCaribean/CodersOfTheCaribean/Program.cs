@@ -3,20 +3,44 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Diagnostics;
 
 namespace CodersOfTheCaribean
 {
     internal class Program
     {
+        const LogLevel CurrentLogLevel = LogLevel.INFO;
+        internal enum LogLevel
+        {
+            TRACE = 0,
+            INFO = 1,
+            WARN = 2,
+            ERROR = 3
+        }
+        static Dictionary<string, Stopwatch> swDict = new Dictionary<string, Stopwatch>();
+
+        internal static void StartFunction(string functionName)
+        {
+            Stopwatch sw;
+            if (!swDict.TryGetValue(functionName, out sw))
+                swDict.Add(functionName, new Stopwatch());
+
+            swDict[functionName].Restart();
+        }
+        internal static void StopFunction(string functionName, LogLevel logLevel)
+        {
+            swDict[functionName].Stop();
+            if(logLevel >= CurrentLogLevel)
+                Console.Error.WriteLine($"{functionName} took {swDict[functionName].ElapsedMilliseconds} ms");
+        }
+
         static void Main(string[] args)
         {
-
             int turnCounter = 0;
             bool[] firedLastTurn = new bool[3];
             firedLastTurn[0] = true;
             firedLastTurn[1] = true;
             firedLastTurn[2] = true;
-            System.Diagnostics.Stopwatch sw = new System.Diagnostics.Stopwatch();
 
             int lastRow = -1;
             int lastCol = -1;
@@ -26,16 +50,20 @@ namespace CodersOfTheCaribean
             // game loop
             while (true)
             {
-                sw.Start();
+
+                StartFunction("MainLoop");
                 takenFields.Clear();
                 takenShots = GetShotsInTheAir();
                 ++turnCounter;
+                StartFunction("ReadInput");
                 int myShipCount = int.Parse(Console.ReadLine()); // the number of remaining ships
                 int entityCount = int.Parse(Console.ReadLine()); // the number of entities (e.g. ships, mines or cannonballs)
+                StopFunction("ReadInput", LogLevel.INFO);
                 int shipCount = 0;
                 var myShips = Gameboard.Update(entityCount);
                 foreach (var ship in myShips.OrderBy(x => x.EntityId))
                 {
+                    StartFunction("ShipLogic");
                     if (firedLastTurn[shipCount] == false)
                     {
                         var closestEnemy = (Ship)Gameboard.AllEntities
@@ -49,64 +77,76 @@ namespace CodersOfTheCaribean
                             Field shootAtField = GetTarget(takenShots, closestEnemy, distance);
                             Console.WriteLine($"FIRE {shootAtField}");
                             firedLastTurn[shipCount] = true;
+                            continue;
                         }
                     } 
                     else
                     {
                         firedLastTurn[shipCount] = false;
-                    }
+                    } 
 
                     var nextField = Gameboard.Fields.Cast<Field>()
                         .Where(x => !takenFields.Contains(x))
                         .OrderByDescending(x => x.Score - Math.Sqrt(ship.GetDistanceTo(x.Col, x.Row))).First();
 
                     takenFields.Add(nextField);
+                    Gameboard.AddRadiusFields(nextField.Col, nextField.Row, takenFields);
 
                     Console.WriteLine($"MOVE {nextField.Col} {nextField.Row}");
 
                     shipCount++;
-                }
-                sw.Stop();
-                Console.Error.WriteLine(sw.ElapsedMilliseconds);
-                sw.Reset();
 
+                    StopFunction("ShipLogic", LogLevel.INFO);
+                }
+                Console.Out.Flush();
+                Console.Error.Flush();
+
+                StopFunction("MainLoop", LogLevel.INFO);
             }
         }
 
         private static List<Field> GetShotsInTheAir()
         {
+            StartFunction("GetShotsInTheAir");
             List<Field> result = new List<Field>();
 
             foreach (var shot in Gameboard.AllEntities.Where(x => x.EntityType == EntityType.CANNONBALL))
             {
                 result.Add(Gameboard.Fields[shot.Col, shot.Row]);
             }
+            StopFunction("GetShotsInTheAir", Program.LogLevel.TRACE);
             return result;
         }
 
         private static Field GetTarget(List<Field> takenShots, Ship closestEnemy, float distance)
         {
+            StartFunction("GetTarget");
             //Console.Error.WriteLine($"Distance {distance} {closestEnemy.CurrentRotation.ToString()}");
             int roundsTillImpact = (int)Math.Round(1 + distance / 3, 0);
 
             Field fieldWhereIsShipGonnaBe = GetDesination(closestEnemy, roundsTillImpact);
+            int count = 0;
             while (takenShots.Contains(fieldWhereIsShipGonnaBe))
             {
+                
                 fieldWhereIsShipGonnaBe =  fieldWhereIsShipGonnaBe.RandMutate();
             }
             takenShots.Add(fieldWhereIsShipGonnaBe);
 
+            StopFunction("GetTarget", Program.LogLevel.TRACE);
             return fieldWhereIsShipGonnaBe;
         }
 
         private static Field GetDesination(Ship closestEnemy, int roundsTillImpact)
         {
+            StartFunction("GetDesination");
             while (--roundsTillImpact >= 0)
             {
                 //Console.Error.WriteLine($"Before Simulate Move: {closestEnemy.Col} {closestEnemy.Row} {roundsTillImpact}");
                 closestEnemy = closestEnemy.SimulateMove();
             }
 
+            StopFunction("GetDesination", Program.LogLevel.TRACE);
             return Gameboard.Fields[closestEnemy.Col, closestEnemy.Row];
         }
     }
@@ -302,11 +342,14 @@ namespace CodersOfTheCaribean
 
         internal Ship SimulateMove()
         {
-
             Ship result = (Ship)this.MemberwiseClone();
             int col = result.Col;
             int row = result.Row;
-            if (Speed <= 1)
+            if(Speed == 0)
+            {
+                return result;
+            }
+            if (Speed == 1)
             {
                 if (row % 2 == 0)
                 {
@@ -436,7 +479,7 @@ namespace CodersOfTheCaribean
             Field result = (Field)this.MemberwiseClone();
             var randDirection = (Ship.Rotation)rndGen.Next(Enum.GetNames(typeof(Ship.Rotation)).Length);
             var ship = new Ship(Col, Row, 1, randDirection);
-            ship.SimulateMove();
+            ship = ship.SimulateMove();
             result.Col = ship.Col;
             result.Row = ship.Row;
             return result;
@@ -492,6 +535,7 @@ namespace CodersOfTheCaribean
 
         internal static List<Ship> Update(int entityCount)
         {
+            Program.StartFunction("Gameboard.Update");
             AllEntities.Clear();
             for (int row = 0; row <= MAXHEIGHT; row++)
             {
@@ -542,6 +586,7 @@ namespace CodersOfTheCaribean
 
             CalculateFieldValues();
 
+            Program.StopFunction("Gameboard.Update", Program.LogLevel.INFO);
             return playerShips;
         }
 
@@ -602,11 +647,41 @@ namespace CodersOfTheCaribean
             }
         }
 
+        internal static void AddRadiusFields(int col, int row, List<Field> takenFields)
+        {
+
+            if (row % 2 == 0)
+            {
+                safeAddField(col - 1, row - 1, takenFields);
+                safeAddField(col - 1, row, takenFields);
+                safeAddField(col - 1, row + 1, takenFields);
+                safeAddField(col, row + 1, takenFields);
+                safeAddField(col + 1, row, takenFields);
+                safeAddField(col, row - 1, takenFields);
+            }
+            else
+            {
+                safeAddField(col, row - 1, takenFields);
+                safeAddField(col - 1, row, takenFields);
+                safeAddField(col, row + 1, takenFields);
+                safeAddField(col + 1, row + 1, takenFields);
+                safeAddField(col + 1, row, takenFields);
+                safeAddField(col + 1, row - 1, takenFields);
+            }
+        }
+
         private static void safeAdd(int col, int row, int v)
         {
             //Console.Error.WriteLine($"SAFEADD {col} {row}");
             if (col > 0 && row > 0 && col <= MAXWIDTH && row <= MAXHEIGHT)
                 Fields[col, row].Score += v;
+        }
+
+        private static void safeAddField(int col, int row,List<Field> fields)
+        {
+            //Console.Error.WriteLine($"SAFEADD {col} {row}");
+            if (col > 0 && row > 0 && col <= MAXWIDTH && row <= MAXHEIGHT && !fields.Contains(Gameboard.Fields[col, row]))
+                fields.Add( Gameboard.Fields[col, row] );
         }
 
         private static void CalculateFieldValues()
