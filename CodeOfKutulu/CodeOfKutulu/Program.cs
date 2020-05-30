@@ -4,6 +4,7 @@ using System.IO;
 using System.Text;
 using System.Collections;
 using System.Collections.Generic;
+using static Gameboard;
 
 /**
  * Survive the wrath of Kutulu
@@ -25,37 +26,82 @@ class Program
             // Write an action using Console.WriteLine()
             // To debug: Console.Error.WriteLine("Debug messages...");
 
-            Console.WriteLine("WAIT"); // MOVE <x> <y> | WAIT
+            //Console.WriteLine("WAIT"); // MOVE <x> <y> | WAIT
 
         }
     }
 }
 
 public static class PlayerLogic
-{    public enum Actions
+{   
+    public enum Actions
     {
         MOVE,
-        WAIT
+        WAIT,
+        PLAN,
+        LIGHT
     }
+
+    static int _plansLeft = 2;
+    static int _lightsLeft = 3;
+
     public static void DoTurn()
     {
         var player = Gameboard.MyExplorer;
-        var bestField = Gameboard.Fields.Cast<Gameboard.Field>().Where(x => !x.IsWall)
+
+        var bestField = Gameboard.Fields.Cast<Gameboard.Field>()
+            .Where(x => !x.IsWall)
             .OrderByDescending(x => x.Score)
             .ThenBy(x => player.GetDistanceTo(x))
             .First();
 
-        Console.WriteLine($"{Actions.MOVE} {bestField}");
+        DoMove(bestField);
     }
 
     private static void Wait()
     {
+        if (_plansLeft > 0 && !GetMyEffects().Any() && MyExplorer.Sanity < 230)
+        {
+            int countPlayersAroundMe = Gameboard.GetOtherExplorers().Where(x => Gameboard.MyExplorer.GetDistanceTo(x) <= 2).Count();
+            if (countPlayersAroundMe > 1)
+            {
+                CastPlan();
+                return;
+            }
+        }
+        if (_lightsLeft > 0 && !GetMyEffects().Any())
+        {
+            int countEnemiesAroundMe = Gameboard.GetActiveEnemies().Where(x => MyExplorer.GetDistanceTo(x) <= 5).Count();
+            if (countEnemiesAroundMe > 2)
+            {
+                CastLight();
+                return;
+            }
+        }
+
         Console.WriteLine(Actions.WAIT);
     }
 
-    private static void DoMove(Explorer clostestPlayer)
+    private static void CastPlan()
     {
-        Console.WriteLine($"{Actions.MOVE} {clostestPlayer}");
+        _plansLeft--;
+        Console.WriteLine(Actions.PLAN);
+    }    
+    private static void CastLight()
+    {
+        _lightsLeft--;
+        Console.WriteLine(Actions.LIGHT);
+    }
+
+    private static void DoMove(Field destination)
+    {
+        if (MyExplorer.Field.Equals(destination))
+        {
+            Wait();
+            return;
+        }
+
+        Console.WriteLine($"{Actions.MOVE} {destination}");
     }
 }
 
@@ -64,7 +110,9 @@ public abstract class Entity
     public enum EntityType
     {
         WANDERER,
-        EXPLORER
+        EXPLORER,
+        EFFECT_PLAN,
+        EFFECT_LIGHT
     }
 
     public EntityType Type { get; protected set; }
@@ -101,9 +149,20 @@ public abstract class Entity
             case EntityType.WANDERER:
                 return new Wanderer(inputs);
 
+            case EntityType.EFFECT_LIGHT:
+                return new Light(inputs);
+
+            case EntityType.EFFECT_PLAN:
+                return new Plan(inputs);
+
             default:
                 throw new NotImplementedException();
         }
+    }
+
+    public bool Equals(Field field)
+    {
+        throw new Exception("Can't process equals on Entity and Field");
     }
 
     public int GetDistanceTo(Entity otherEntity)
@@ -134,6 +193,38 @@ public class Explorer : Entity
         int param1 = int.Parse(inputs[5]);
         int param2 = int.Parse(inputs[6]);
         IsPlayer = isPlayer;
+    }
+}
+
+public abstract class Effect : Entity
+{
+    public int TimeToFadeOut { get; private set; }
+    public int CasterId { get; private set; }
+
+    public virtual int Radius { get; protected set; }
+
+    public Effect(string[] inputs) : base(inputs)
+    {
+        TimeToFadeOut = int.Parse(inputs[4]);
+        CasterId = int.Parse(inputs[5]);
+    }
+}
+
+public class Plan : Effect
+{
+    public Plan(string[] inputs) : base(inputs) 
+    {
+        Radius = 2;
+        Type = EntityType.EFFECT_PLAN;
+    }
+}
+
+
+public class Light : Effect
+{
+    public Light(string[] inputs) : base(inputs) {
+        Radius = 5;
+        Type = EntityType.EFFECT_LIGHT;
     }
 }
 
@@ -218,17 +309,35 @@ public static class Gameboard
         {
             Score += toAdd;
         }
-
+        public override bool Equals(object obj)
+        {
+            if (obj == null) return false;
+            Field objAsField = obj as Field;
+            if (objAsField == null)
+                return false;
+            else
+                return Equals(objAsField);
+        }
+        public override int GetHashCode()
+        {
+            return (Col << 8) + Row;
+        }
+        public bool Equals(Field other)
+        {
+            if (other == null)
+                return false;
+            return this.Col == other.Col && this.Row == other.Row;
+        }
 
         internal IEnumerable<Field> GetNeighouringFields(int maxDistance = 1)
         {
             List<Field> result = new List<Field>();
 
-            for (int col = X - maxDistance; col < X + maxDistance; col++)
+            for (int col = X - maxDistance; col <= X + maxDistance; col++)
             {
-                for (int row = Y - maxDistance; row < Y + maxDistance; row++)
+                for (int row = Y - maxDistance; row <= Y + maxDistance; row++)
                 {
-                    if (col < 0 || row < 0 || col > Gameboard.Width || row > Gameboard.Height)
+                    if (col < 0 || row < 0 || col >= WIDTH || row >= HEIGHT)
                         continue;
 
                     if (this.GetDistanceTo(Fields[col, row]) > maxDistance)
@@ -253,14 +362,26 @@ public static class Gameboard
             return Math.Abs(this.X - otherField.X) + Math.Abs(this.Y - otherField.Y);
         }
 
+        public override string ToString()
+        {
+            return $"{X} {Y}";
+        }
+
+        internal void ResetScore()
+        {
+            if (IsSpwan)
+                Score = -5;
+            else
+                Score = 0;
+        }
     }
 
     public static Explorer MyExplorer { get; private set; }
 
     public static List<Entity> Entities { get; private set; }
 
-    public static int Width { get; private set; }
-    public static int Height { get; private set; }
+    public static int WIDTH { get; private set; }
+    public static int HEIGHT { get; private set; }
 
     public static int SanityLossLonely { get; private set; }
 
@@ -274,11 +395,11 @@ public static class Gameboard
 
     public static void GAMEINIT()
     {
-        Width = int.Parse(Console.ReadLine());
-        Height = int.Parse(Console.ReadLine());
-        Fields = new Field[Width, Height];
+        WIDTH = int.Parse(Console.ReadLine());
+        HEIGHT = int.Parse(Console.ReadLine());
+        Fields = new Field[WIDTH, HEIGHT];
 
-        for (int row = 0; row < Height; row++)
+        for (int row = 0; row < HEIGHT; row++)
         {
             string line = Console.ReadLine();
             for (int col = 0; col < line.Length; col++)
@@ -315,6 +436,14 @@ public static class Gameboard
 
     private static void CalculateScore()
     {
+        for(int col = 0; col < WIDTH; col++)
+        {
+            for(int row = 0; row < HEIGHT; row++)
+            {
+                Fields[col, row].ResetScore();
+            }
+        }
+
         foreach (var entity in Entities.Where(x => x.ID != MyExplorer.ID))
         {
             if (entity.Type == Entity.EntityType.WANDERER)
@@ -322,7 +451,7 @@ public static class Gameboard
                 var mob = (Wanderer)entity;
                 if ((mob.CurrentState == Wanderer.State.SPAWNING && mob.TimeTillSpawn <= 2) || mob.CurrentState == Wanderer.State.WANDERING)
                 {
-                    entity.Field.AddScore(-20);
+                    entity.Field.AddScore(-10);
                     IEnumerable<Field> neighbouring = entity.Field.GetNeighouringFields(1);
                     foreach (var field in neighbouring)
                     {
@@ -337,9 +466,38 @@ public static class Gameboard
                     field.AddScore(SanityLossLonely - SanityLossGroup);
                 }
             }
+            if (entity.Type == Entity.EntityType.EFFECT_LIGHT)
+            {
+                var effect = (Effect)entity;
+                foreach (var field in entity.Field.GetNeighouringFields(effect.Radius))
+                {
+                    field.AddScore(1);
+                }
+            }
+            if (entity.Type == Entity.EntityType.EFFECT_PLAN)
+            {
+                var effect = (Effect)entity;
+                foreach (var field in entity.Field.GetNeighouringFields(effect.Radius))
+                {
+                    field.AddScore(2);
+                }
+            }
         }
+
+        Console.Error.WriteLine("BEST FIELDS");
+        foreach (var field in Fields.Cast<Field>().OrderByDescending(x => x.Score).ThenBy(x => MyExplorer.GetDistanceTo(x)).Take(3))
+            Console.Error.WriteLine($"{field}: {field.Score} IsWall: {field.IsWall}");
+
+        //var closestWanderer
+
     }
 
+    public static IEnumerable<Explorer> GetOtherExplorers()
+    {
+        return Entities
+            .Where(x => x.Type == Entity.EntityType.EXPLORER && ((Explorer)x).IsPlayer == false)
+            .Cast<Explorer>();
+    }
 
     public static IEnumerable<Explorer> GetOtherExplorersByDistance(Entity otherEntity)
     {
@@ -347,5 +505,21 @@ public static class Gameboard
             .Where(x => x.Type == Entity.EntityType.EXPLORER && ((Explorer)x).IsPlayer == false)
             .OrderBy(x => otherEntity.GetDistanceTo(x))
             .Cast<Explorer>();
+    }
+
+    internal static IEnumerable<Effect> GetMyEffects()
+    {
+        return Entities.Where(x => (x.Type == Entity.EntityType.EFFECT_LIGHT 
+                                    || x.Type == Entity.EntityType.EFFECT_PLAN) 
+                                    && ((Effect)x).CasterId == MyExplorer.ID)
+            .Cast<Effect>();
+    }
+
+    internal static IEnumerable<Wanderer> GetActiveEnemies()
+    {
+        return Entities.Where(x => 
+        x.Type == Entity.EntityType.WANDERER 
+        && ((Wanderer)x).CurrentState == Wanderer.State.WANDERING)
+            .Cast<Wanderer>();
     }
 }
