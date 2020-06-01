@@ -622,6 +622,7 @@ public static class Gameboard
                                     || x.Type == Entity.EntityType.EFFECT_PLAN)
                                     && ((Effect)x).CasterId == MyExplorer.ID)
             .Cast<Effect>();
+        
     }
 
     internal static IEnumerable<Wanderer> GetActiveEnemies()
@@ -630,5 +631,32 @@ public static class Gameboard
         x.Type == Entity.EntityType.WANDERER
         && ((Wanderer)x).CurrentState == Wanderer.State.WANDERING)
             .Cast<Wanderer>();
+    }
+
+    private void FloodFill(Bitmap bmp, Point pt, Color targetColor, Color replacementColor)
+    {
+        Stack<Point> pixels = new Stack<Point>();
+        targetColor = bmp.GetPixel(pt.X, pt.Y);
+        pixels.Push(pt);
+
+        while (pixels.Count > 0)
+        {
+            Point a = pixels.Pop();
+            if (a.X < bmp.Width && a.X > 0 &&
+                    a.Y < bmp.Height && a.Y > 0)//make sure we stay within bounds
+            {
+
+                if (bmp.GetPixel(a.X, a.Y) == targetColor)
+                {
+                    bmp.SetPixel(a.X, a.Y, replacementColor);
+                    pixels.Push(new Point(a.X - 1, a.Y));
+                    pixels.Push(new Point(a.X + 1, a.Y));
+                    pixels.Push(new Point(a.X, a.Y - 1));
+                    pixels.Push(new Point(a.X, a.Y + 1));
+                }
+            }
+        }
+        pictureBox1.Refresh(); //refresh our main picture box
+        return;
     }
 }
