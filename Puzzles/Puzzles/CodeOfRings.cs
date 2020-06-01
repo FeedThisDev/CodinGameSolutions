@@ -4,77 +4,275 @@ using System.IO;
 using System.Text;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Threading.Tasks;
+using System.Net;
 
 /**
  * Auto-generated code below aims at helping you parse
  * the standard input according to the problem statement.
  **/
+
+
+public struct Gamestate
+{
+    public int TotalStringLength { get; set; }
+    public string TotalString { get; set; }
+    public char[] CurrentRunes { get; set; }
+    public int PlayerPosition { get; set; }    
+}
+
+public class Node
+{
+    public Gamestate State { get; set; }
+
+    public Node[] Childrean { get; set; }
+
+    public Node Parent { get; set; }
+
+
+    //internal string GetPath(int idx)
+    //{
+    //    Node current = this;
+    //    List<int> path = new List<int>();
+
+    //    while(current != null)
+    //    {
+    //        path.Add(current.State.PlayerPosition);
+    //        current = current.Parent;
+    //    }
+    //    path.Reverse();
+    //    int curPos = idx;
+    //    foreach (var decision in path)
+    //    {
+    //        string moveTo = Player.GetMoveToRune(current.State.PlayerPosition, decision);
+    //        string changeTo = Player.ChangeAndHitRune(decision, Player.MagicPhrase[curPos], this.State.CurrentRunes, out char[] newRunes);
+    //    }
+
+    //}
+}
+
 class Player
 {
-
+    static int PermCounter = 0;
     static char[] runeValues = " ABCDEFGHIJKLMNOPQRSTUVWXYZ".ToCharArray();
-    static char[] runes = new char[30];
+    #region MagicStrings
+    public static string[] goRight = {
+    "",
+    ">",
+    ">>",
+    ">>>",
+    ">>>>",
+    ">>>>>",
+    ">>>>>>",
+    ">>>>>>>",
+    ">>>>>>>>",
+    ">>>>>>>>>",
+    ">>>>>>>>>>",
+    ">>>>>>>>>>>",
+    ">>>>>>>>>>>>",
+    ">>>>>>>>>>>>>",
+    ">>>>>>>>>>>>>>",
+    ">>>>>>>>>>>>>>>",
+    ">>>>>>>>>>>>>>>>",
+    ">>>>>>>>>>>>>>>>>",
+    ">>>>>>>>>>>>>>>>>>",
+    ">>>>>>>>>>>>>>>>>>>",
+    ">>>>>>>>>>>>>>>>>>>>",
+    ">>>>>>>>>>>>>>>>>>>>>",
+    ">>>>>>>>>>>>>>>>>>>>>>",
+    };
+
+    public static string[] add = {
+    "",
+    "+",
+    "++",
+    "+++",
+    "++++",
+    "+++++",
+    "++++++",
+    "+++++++",
+    "++++++++",
+    "+++++++++",
+    "++++++++++",
+    "+++++++++++",
+    "++++++++++++",
+    "+++++++++++++",
+    "++++++++++++++",
+    "+++++++++++++++",
+    "++++++++++++++++",
+    "+++++++++++++++++",
+    "++++++++++++++++++",
+    "+++++++++++++++++++",
+    "++++++++++++++++++++",
+    "+++++++++++++++++++++",
+    "++++++++++++++++++++++",
+    };
+
+    public static string[] substract = {
+    "",
+    "-",
+    "--",
+    "---",
+    "----",
+    "-----",
+    "------",
+    "-------",
+    "--------",
+    "---------",
+    "----------",
+    "-----------",
+    "------------",
+    "-------------",
+    "--------------",
+    "---------------",
+    "----------------",
+    "-----------------",
+    "------------------",
+    "-------------------",
+    "--------------------",
+    "---------------------",
+    "----------------------",
+    };
+
+    public static string[] goLeft = {
+    "",
+    "<",
+    "<<",
+    "<<<",
+    "<<<<",
+    "<<<<<",
+    "<<<<<<",
+    "<<<<<<<",
+    "<<<<<<<<",
+    "<<<<<<<<<",
+    "<<<<<<<<<<",
+    "<<<<<<<<<<<",
+    "<<<<<<<<<<<<",
+    "<<<<<<<<<<<<<",
+    "<<<<<<<<<<<<<<",
+    "<<<<<<<<<<<<<<<",
+    "<<<<<<<<<<<<<<<<",
+    "<<<<<<<<<<<<<<<<<",
+    "<<<<<<<<<<<<<<<<<<",
+    "<<<<<<<<<<<<<<<<<<<",
+    "<<<<<<<<<<<<<<<<<<<<",
+    "<<<<<<<<<<<<<<<<<<<<<",
+    "<<<<<<<<<<<<<<<<<<<<<<",
+    };
+
+    #endregion
+
+    const int MaxTake = 6;
+    const int TreeDeph = 5;
+    //static string MagicPhrase = "OYLO Y OOOYYY LLLYOOYY O YO YLOO O OLY YL OY L YY L YOO LYL YYYOOYLOL L Y O YYYLLOY O L YYYOOYLOL YOLOLOY";
+    public static string MagicPhrase = Console.ReadLine(); // "UMNE TALMAR RAHTAINE NIXENEN UMIR";
     static void Main(string[] args)
     {
+        Stopwatch sw = new Stopwatch();
+        sw.Start();
+        StringBuilder resultBuilder = new StringBuilder();
+        char[] runes = new char[30];
         for (int i = 0; i < 30; i++)
             runes[i] = ' ';
 
-        string magicPhrase = "AZ";// Console.ReadLine();//"UMNE TALMAR RAHTAINE NIXENEN UMIR";// 
-        //Dictionary<char, int> letterToIndex = new Dictionary<char, int>();
 
-        runes.AsParallel().ForAll(x => x = ' ');
-
-        StringBuilder result = new StringBuilder();
-
-        int currentPosition = 0;
-
-        for(int i = 0; i < magicPhrase.Length; i++)
+        Gamestate beginning = new Gamestate()
         {
-            char nextLetter = magicPhrase[i];
-            string printThis = GetShortestLetterSolution(nextLetter, ref currentPosition, ref runes);
-            result.Append(printThis);
+            CurrentRunes = runes,
+            TotalStringLength = 0,
+            PlayerPosition = 0,
+        };
+
+        Node rootNode = new Node()
+        {
+            State = beginning,
+            Parent = null
+        };
+
+        int idx = 0;
+        while (idx < MagicPhrase.Length - TreeDeph)
+        {
+            var shortestNode = FillTree(rootNode, idx, idx + TreeDeph);
+            idx += TreeDeph;
+            resultBuilder.Append(shortestNode.State.TotalString);
+            rootNode = new Node
+            {
+                Parent = null,
+                State = new Gamestate
+                {
+                    CurrentRunes = shortestNode.State.CurrentRunes,
+                    PlayerPosition = shortestNode.State.PlayerPosition,
+                    TotalStringLength = 0,
+                    TotalString = ""
+                }
+            };
         }
 
-        Console.WriteLine(result.ToString());
+        var finalNode = FillTree(rootNode, idx, MagicPhrase.Length);
+        resultBuilder.Append(finalNode.State.TotalString);
+
+        sw.Stop();
+        Console.Error.WriteLine(sw.ElapsedMilliseconds);
+        Console.Error.WriteLine(PermCounter);
+        Console.WriteLine(resultBuilder.ToString());
+        //Console.WriteLine(shortestNode.State.TotalString.ToString());
+        Console.ReadKey();
     }
 
-    public struct Gamestate
+    private static Node FillTree(Node thisNode, int currentPhraseIndex, int length)
     {
-        public int DecisionMade { get; set; }
-        public int CurrentStringLength { get; set; }
-        public char[] CurrentRunes { get; set; }
-        public int PlayerPosition { get; set; }
+        if (currentPhraseIndex == length)
+            return thisNode;
+
+        
+        char solveForLetter = MagicPhrase[currentPhraseIndex];
+        thisNode.Childrean = GetPossibleSolutions(solveForLetter, thisNode.State)
+            .Select(x => new Node { State = x, Parent = thisNode })
+            .ToArray();
+
+        Node shortestNode = null;
+
+        foreach(var childNode in thisNode.Childrean)
+        {
+            PermCounter++;
+            var result = FillTree(childNode, currentPhraseIndex + 1, length);
+            if (result != null)
+            {
+                if (shortestNode == null || result.State.TotalStringLength < shortestNode.State.TotalStringLength)
+                {
+                    shortestNode = result;
+                }
+            }
+        };
+
+        return shortestNode;
     }
 
-    private static Gamestate[] GetPossibleSolutions(char nextLetter, int currentPosition, char[] runes)
+    private static Gamestate[] GetPossibleSolutions(char letter, Gamestate currentState)
     {
         List<Gamestate> possibleResultingGamestate = new List<Gamestate>();
-        //Möglichkeit 1-30: Letter verändern und nehmen
-        int newPositionShortest = 0;
-        char[] shortestNewRuins = null;
-        string shortestString = null;
-        for(int i = 0; i < 30; i++)
+
+        for (int i = 0; i < 30; i++)
         {
-            int newPosition = 0;
-            char[] newRunes = null;
-            string moveTo = GetMoveToRune(currentPosition, i, out newPosition);
-            string changeTo = ChangeAndHitRune(i, nextLetter, out newRunes);
+            string moveTo = GetMoveToRune(currentState.PlayerPosition, i);
+            string changeTo = ChangeAndHitRune(i, letter, currentState.CurrentRunes, out char[] newRunes);
+
             Gamestate gamestate = new Gamestate()
             {
                 CurrentRunes = newRunes,
-                CurrentStringLength = moveTo.Length + changeTo.Length,
-                PlayerPosition = newPosition,
-                DecisionMade = i
+                TotalStringLength = currentState.TotalStringLength + moveTo.Length + changeTo.Length,
+                TotalString = currentState.TotalString + moveTo + changeTo,
+                PlayerPosition = i
             };
             possibleResultingGamestate.Add(gamestate);
         }
 
-        return possibleResultingGamestate.ToArray();
+        return possibleResultingGamestate.OrderBy(x => x.TotalStringLength).Take(MaxTake).ToArray();
     }
 
-    private static string ChangeAndHitRune(int i, char nextLetter, out char[] newRunes)
-
-    {         StringBuilder result = new StringBuilder();
+    public static string ChangeAndHitRune(int i, char nextLetter, char[] runes, out char[] newRunes)
+    {
         int indexDestinationLetter = 0;
         while (runeValues[indexDestinationLetter] != nextLetter)
             indexDestinationLetter++;
@@ -83,50 +281,45 @@ class Player
         while (runeValues[indexCurrentLetter] != runes[i])
             indexCurrentLetter++;
 
-        int offset = indexDestinationLetter - indexCurrentLetter;
+        int offsetForwards = 0;
+        int offsetBackwards = 0;
 
-        if(Math.Abs(offset) > (runeValues.Length / 2)){
-            offset = -( runeValues.Length - offset );
+        if (indexDestinationLetter > indexCurrentLetter)
+        {
+            offsetForwards = Math.Abs(indexDestinationLetter - indexCurrentLetter);
+            offsetBackwards = runeValues.Length - Math.Abs(indexCurrentLetter - indexDestinationLetter);
+        } else
+        {
+            offsetForwards = runeValues.Length - Math.Abs(indexCurrentLetter - indexDestinationLetter); 
+            offsetBackwards = Math.Abs(indexDestinationLetter - indexCurrentLetter);
         }
-        char manipChar = offset < 0 ? '-' : '+';
-        for(int j = 0; j< Math.Abs(offset);j++)
-            result.Append(manipChar);
-        result.Append('.');
-        newRunes = (char[]) runes.Clone();
+        newRunes = (char[])runes.Clone();
         newRunes[i] = nextLetter;
 
-        return result.ToString();
+        if (offsetBackwards > offsetForwards)
+            return add[offsetForwards] + '.';
+        return substract[offsetBackwards] + '.';
     }   
 
-    private static string GetMoveToRune(int currentPosition, int destinationPos, out int newPosition)
+    public static string GetMoveToRune(int currentPosition, int destinationPos)
     {
-        StringBuilder goRight = new StringBuilder();
-        //go right
-        int curPos = currentPosition;
+        int offsetForwards = 0;
+        int offsetBackwards = 0;
 
-        while(curPos != destinationPos)
+        if (destinationPos > currentPosition)
         {
-            goRight.Append(">");
-            curPos++;
-            if (curPos == 30)
-                curPos = 0;
+            offsetForwards = Math.Abs(destinationPos - currentPosition);
+            offsetBackwards = 30 - Math.Abs(currentPosition - destinationPos);
+        }
+        else
+        {
+            offsetForwards = 30 - Math.Abs(currentPosition - destinationPos);
+            offsetBackwards = Math.Abs(destinationPos - currentPosition);
         }
 
-        //go left
-        StringBuilder goLeft = new StringBuilder();
-        curPos = currentPosition;
-        while(curPos != destinationPos)
-        {
-            goLeft.Append('<');
-            curPos--;
-            if (curPos == -1)
-                curPos = 29;
-        }
+        if (offsetBackwards > offsetForwards)
+            return goRight[offsetForwards];
 
-        newPosition = destinationPos;
-
-        if (goLeft.Length < goRight.Length)
-            return goLeft.ToString();
-        return goRight.ToString();
+        return goLeft[offsetBackwards];
     }
 }
