@@ -38,8 +38,17 @@ class Player
         Console.WriteLine(result.ToString());
     }
 
-    private static string GetShortestLetterSolution(char nextLetter, ref int currentPosition, ref char[] runes)
+    public struct Gamestate
     {
+        public int DecisionMade { get; set; }
+        public int CurrentStringLength { get; set; }
+        public char[] CurrentRunes { get; set; }
+        public int PlayerPosition { get; set; }
+    }
+
+    private static Gamestate[] GetPossibleSolutions(char nextLetter, int currentPosition, char[] runes)
+    {
+        List<Gamestate> possibleResultingGamestate = new List<Gamestate>();
         //Möglichkeit 1-30: Letter verändern und nehmen
         int newPositionShortest = 0;
         char[] shortestNewRuins = null;
@@ -50,17 +59,17 @@ class Player
             char[] newRunes = null;
             string moveTo = GetMoveToRune(currentPosition, i, out newPosition);
             string changeTo = ChangeAndHitRune(i, nextLetter, out newRunes);
-            if(shortestString == null || moveTo.Length + changeTo.Length < shortestString.Length)
+            Gamestate gamestate = new Gamestate()
             {
-                shortestString = moveTo + changeTo;
-                newPositionShortest = newPosition;
-                shortestNewRuins = newRunes;
-            }
+                CurrentRunes = newRunes,
+                CurrentStringLength = moveTo.Length + changeTo.Length,
+                PlayerPosition = newPosition,
+                DecisionMade = i
+            };
+            possibleResultingGamestate.Add(gamestate);
         }
-        runes = shortestNewRuins;
-        currentPosition = newPositionShortest;
 
-        return shortestString;
+        return possibleResultingGamestate.ToArray();
     }
 
     private static string ChangeAndHitRune(int i, char nextLetter, out char[] newRunes)
