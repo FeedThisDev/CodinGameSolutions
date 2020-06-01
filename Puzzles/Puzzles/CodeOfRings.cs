@@ -13,7 +13,7 @@ public struct Gamestate
     public int TotalStringLength { get; set; }
     public string TotalString { get; set; }
     public char[] CurrentRunes { get; set; }
-    public int PlayerPosition { get; set; }    
+    public int PlayerPosition { get; set; }
 }
 
 public class Node
@@ -29,6 +29,7 @@ class Player
 {
     static int PermCounter = 0;
     static char[] runeValues = " ABCDEFGHIJKLMNOPQRSTUVWXYZ".ToCharArray();
+    static char[] runes = new char[30];
     #region MagicStrings
     public static string[] goRight = {
     "",
@@ -144,52 +145,47 @@ class Player
     {
         Stopwatch sw = new Stopwatch();
         sw.Start();
-        StringBuilder resultBuilder = new StringBuilder();
-        char[] runes = new char[30];
+
         for (int i = 0; i < 30; i++)
             runes[i] = ' ';
 
+        var letterToCount2 = MagicPhrase.ToCharArray().GroupBy(x => x, x => x, (key, g) => new { Letter = key, Count = g.Count() }).ToDictionary(key => key.Letter, val => val.Count);
+        int spaces = 30 - letterToCount2.Count;
+        var letterToCount = letterToCount2.OrderByDescending(p => p.Value);
 
-        Gamestate beginning = new Gamestate()
+        var letterToRune = new Dictionary<char, int>();
+        StringBuilder resultBuilder = new StringBuilder();
+        int playerPosition = 0;
+        int runeIdx = 0;
+        foreach (var kvp in letterToCount)
         {
-            CurrentRunes = runes,
-            TotalStringLength = 0,
-            PlayerPosition = 0,
-        };
-
-        Node rootNode = new Node()
-        {
-            State = beginning,
-            Parent = null
-        };
-
-        int idx = 0;
-        while (idx < MagicPhrase.Length - TreeDeph)
-        {
-            var shortestNode = FillTree(rootNode, idx, idx + TreeDeph);
-            idx += TreeDeph;
-            resultBuilder.Append(shortestNode.State.TotalString);
-            rootNode = new Node
-            {
-                Parent = null,
-                State = new Gamestate
-                {
-                    CurrentRunes = shortestNode.State.CurrentRunes,
-                    PlayerPosition = shortestNode.State.PlayerPosition,
-                    TotalStringLength = 0,
-                    TotalString = ""
-                }
-            };
+            resultBuilder.Append(GetMoveToRune(playerPosition, runeIdx));
+            resultBuilder.Append(StartChangeEmptyRuneTo(kvp.Key));
+            letterToRune.Add(kvp.Key, runeIdx);
+            playerPosition = runeIdx;
+            runeIdx++;
         }
 
-        var finalNode = FillTree(rootNode, idx, MagicPhrase.Length);
-        resultBuilder.Append(finalNode.State.TotalString);
+        for (int i = 0; i < MagicPhrase.Length; i++)
+        {
+            if (!letterToRune.ContainsKey(MagicPhrase[i]))
+            {
+                resultBuilder.Append(GetMoveToRune(playerPosition, runeIdx));
+                resultBuilder.Append(StartChangeEmptyRuneTo(MagicPhrase[i]));
+                letterToRune.Add(MagicPhrase[i], runeIdx);
+                playerPosition = runeIdx;
+                runeIdx++;
+            }
+            else
+            {
+                int newPlayerPosition = letterToRune[MagicPhrase[i]];
+                resultBuilder.Append(GetMoveToRune(playerPosition, newPlayerPosition) + ".");
+                playerPosition = newPlayerPosition;
+            }
+        }
 
-        sw.Stop();
-        Console.Error.WriteLine(sw.ElapsedMilliseconds);
         Console.Error.WriteLine(resultBuilder.Length);
         Console.WriteLine(resultBuilder.ToString());
-        //Console.WriteLine(shortestNode.State.TotalString.ToString());
         Console.ReadKey();
     }
 
@@ -198,7 +194,7 @@ class Player
         if (currentPhraseIndex == length)
             return thisNode;
 
-        
+
         char solveForLetter = MagicPhrase[currentPhraseIndex];
         thisNode.Childrean = GetPossibleSolutions(solveForLetter, thisNode.State)
             .Select(x => new Node { State = x, Parent = thisNode })
@@ -206,7 +202,7 @@ class Player
 
         Node shortestNode = null;
 
-        foreach(var childNode in thisNode.Childrean)
+        foreach (var childNode in thisNode.Childrean)
         {
             PermCounter++;
             var result = FillTree(childNode, currentPhraseIndex + 1, length);
@@ -244,6 +240,34 @@ class Player
         return possibleResultingGamestate.OrderBy(x => x.TotalStringLength).Take(MaxTake).ToArray();
     }
 
+    public static string StartChangeEmptyRuneTo(char letter)
+    {
+        int indexDestinationLetter = 0;
+        while (runeValues[indexDestinationLetter] != letter)
+            indexDestinationLetter++;
+
+        int indexCurrentLetter = 0;
+
+        int offsetForwards = 0;
+        int offsetBackwards = 0;
+
+        if (indexDestinationLetter > indexCurrentLetter)
+        {
+            offsetForwards = Math.Abs(indexDestinationLetter - indexCurrentLetter);
+            offsetBackwards = runeValues.Length - Math.Abs(indexCurrentLetter - indexDestinationLetter);
+        }
+        else
+        {
+            offsetForwards = runeValues.Length - Math.Abs(indexCurrentLetter - indexDestinationLetter);
+            offsetBackwards = Math.Abs(indexDestinationLetter - indexCurrentLetter);
+        }
+
+
+        if (offsetBackwards > offsetForwards)
+            return add[offsetForwards];
+        return substract[offsetBackwards];
+    }
+
     public static string ChangeAndHitRune(int i, char nextLetter, char[] runes, out char[] newRunes)
     {
         int indexDestinationLetter = 0;
@@ -261,9 +285,10 @@ class Player
         {
             offsetForwards = Math.Abs(indexDestinationLetter - indexCurrentLetter);
             offsetBackwards = runeValues.Length - Math.Abs(indexCurrentLetter - indexDestinationLetter);
-        } else
+        }
+        else
         {
-            offsetForwards = runeValues.Length - Math.Abs(indexCurrentLetter - indexDestinationLetter); 
+            offsetForwards = runeValues.Length - Math.Abs(indexCurrentLetter - indexDestinationLetter);
             offsetBackwards = Math.Abs(indexDestinationLetter - indexCurrentLetter);
         }
         newRunes = (char[])runes.Clone();
@@ -272,7 +297,7 @@ class Player
         if (offsetBackwards > offsetForwards)
             return add[offsetForwards] + '.';
         return substract[offsetBackwards] + '.';
-    }   
+    }
 
     public static string GetMoveToRune(int currentPosition, int destinationPos)
     {
