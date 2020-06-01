@@ -8,12 +8,6 @@ using System.Diagnostics;
 using System.Threading.Tasks;
 using System.Net;
 
-/**
- * Auto-generated code below aims at helping you parse
- * the standard input according to the problem statement.
- **/
-
-
 public struct Gamestate
 {
     public int TotalStringLength { get; set; }
@@ -29,27 +23,6 @@ public class Node
     public Node[] Childrean { get; set; }
 
     public Node Parent { get; set; }
-
-
-    //internal string GetPath(int idx)
-    //{
-    //    Node current = this;
-    //    List<int> path = new List<int>();
-
-    //    while(current != null)
-    //    {
-    //        path.Add(current.State.PlayerPosition);
-    //        current = current.Parent;
-    //    }
-    //    path.Reverse();
-    //    int curPos = idx;
-    //    foreach (var decision in path)
-    //    {
-    //        string moveTo = Player.GetMoveToRune(current.State.PlayerPosition, decision);
-    //        string changeTo = Player.ChangeAndHitRune(decision, Player.MagicPhrase[curPos], this.State.CurrentRunes, out char[] newRunes);
-    //    }
-
-    //}
 }
 
 class Player
@@ -165,8 +138,8 @@ class Player
 
     const int MaxTake = 6;
     const int TreeDeph = 5;
-    //static string MagicPhrase = "OYLO Y OOOYYY LLLYOOYY O YO YLOO O OLY YL OY L YY L YOO LYL YYYOOYLOL L Y O YYYLLOY O L YYYOOYLOL YOLOLOY";
-    public static string MagicPhrase = Console.ReadLine(); // "UMNE TALMAR RAHTAINE NIXENEN UMIR";
+    static string MagicPhrase = "THREE RINGS FOR THE ELVEN KINGS UNDER THE SKY SEVEN FOR THE DWARF LORDS IN THEIR HALLS OF STONE NINE FOR MORTAL MEN DOOMED TO DIE ONE FOR THE DARK LORD ON HIS DARK THRONEIN THE LAND OF MORDOR WHERE THE SHADOWS LIE ONE RING TO RULE THEM ALL ONE RING TO FIND THEM ONE RING TO BRING THEM ALL AND IN THE DARKNESS BIND THEM IN THE LAND OF MORDOR WHERE THE SHADOWS LIE";
+    //public static string MagicPhrase = Console.ReadLine(); // "UMNE TALMAR RAHTAINE NIXENEN UMIR";
     static void Main(string[] args)
     {
         Stopwatch sw = new Stopwatch();
@@ -214,7 +187,7 @@ class Player
 
         sw.Stop();
         Console.Error.WriteLine(sw.ElapsedMilliseconds);
-        Console.Error.WriteLine(PermCounter);
+        Console.Error.WriteLine(resultBuilder.Length);
         Console.WriteLine(resultBuilder.ToString());
         //Console.WriteLine(shortestNode.State.TotalString.ToString());
         Console.ReadKey();
