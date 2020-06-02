@@ -4,10 +4,10 @@
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{5C547E79-4F73-4258-BC4A-318D6DDC9A93}</ProjectGuid>
+    <ProjectGuid>{03049443-5B43-4056-869E-B0C38C70B41F}</ProjectGuid>
     <OutputType>Exe</OutputType>
-    <RootNamespace>CodeOfKutulu</RootNamespace>
-    <AssemblyName>CodeOfKutulu</AssemblyName>
+    <RootNamespace>FileMergeTool</RootNamespace>
+    <AssemblyName>FileMergeTool</AssemblyName>
     <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
@@ -43,15 +43,8 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Effect.cs" />
-    <Compile Include="Entity.cs" />
-    <Compile Include="Explorer.cs" />
-    <Compile Include="Field.cs" />
-    <Compile Include="Gameboard.cs" />
-    <Compile Include="PlayerLogic.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="Wanderer.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />

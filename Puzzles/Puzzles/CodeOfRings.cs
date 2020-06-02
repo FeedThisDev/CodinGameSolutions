@@ -14,6 +14,13 @@ using System.Net;
  **/
 
 
+public class Match
+{
+    public int Index;
+    public int Length;
+    public int Repetitions;
+}
+
 public struct Gamestate
 {
     public int TotalStringLength { get; set; }
@@ -145,13 +152,14 @@ class Player
 
     #endregion
 
-    static int MaxTake = 4;
-    static int TreeDeph = 6;
-    static int SurroundingRadius = 4;
+    static int MaxTake = 1;
+    static int TreeDeph = 1;
+    static int SurroundingRadius = 15;
+
+    static Dictionary<int, Match> FoundMatches;
 
     static void Main(string[] args)
     {
-
         for (int i = 0; i < runeValues.Length; i++)
         {
             runeLetterToIndex.Add(runeValues[i], i);
@@ -178,9 +186,12 @@ class Player
             runes[i] = ' ';
 
 
-        //MagicPhrase = "THREE RINGS FOR THE ELVEN KINGS UNDER THE SKY SEVEN FOR THE DWARF LORDS IN THEIR HALLS OF STONE NINE FOR MORTAL MEN DOOMED TO DIE ONE FOR THE DARK LORD ON HIS DARK THRONEIN THE LAND OF MORDOR WHERE THE SHADOWS LIE ONE RING TO RULE THEM ALL ONE RING TO FIND THEM ONE RING TO BRING THEM ALL AND IN THE DARKNESS BIND THEM IN THE LAND OF MORDOR WHERE THE SHADOWS LIE";
-        MagicPhrase = Console.ReadLine(); // "UMNE TALMAR RAHTAINE NIXENEN UMIR";
+        //MagicPhrase = "THREE RINGS FOR THE ELVEN KINGS UNDER THE SKY SEVEN FOR THE DWARF LORDS IN THEIR HALLS OF STONE NINE FOR MORTAL MEN DOOMED TO DIE ONE FOR THE DARK LORD ON HIS DARK THRONEIN THE LAND OF MORDOR WHERE THE SHADOWS LIE ONE RING TO RULE THEM ALL ONE RING TO FIND THEM ONE RING TO BRING THEM ALL AND IN THE DARKNESS BIND THEM IN THE LAND OF MORDOR WHERE THE ABABABABABABABABABABASHADOWS LIE";
+        MagicPhrase = "CABCABCABCACABC"; // Console.ReadLine(); // "UMNE TALMAR RAHTAINE NIXENEN UMIR";
 
+        FoundMatches = FindRepeatingSequences(MagicPhrase).ToDictionary(key => key.Index, val => val);
+
+        TreeDeph = MagicPhrase.Length;
 
         Gamestate beginning = new Gamestate()
         {
@@ -218,16 +229,16 @@ class Player
         resultBuilder.Append(finalNode.State.TotalString);
 
         sw.Stop();
-                    //Console.Error.WriteLine($"{MaxTake} {TreeDeph} {SurroundingRadius}: {sw.ElapsedMilliseconds}ms {resultBuilder.Length}");
-                    //Console.Error.WriteLine(PermCounter);
-                    //Console.Error.WriteLine(resultBuilder.Length);
-                    Console.WriteLine(resultBuilder.ToString());
+        Console.Error.WriteLine($"{MaxTake} {TreeDeph} {SurroundingRadius}: {sw.ElapsedMilliseconds}ms {resultBuilder.Length}");
+        //Console.Error.WriteLine(PermCounter);
+        Console.Error.WriteLine(resultBuilder.Length);
+        Console.WriteLine(resultBuilder.ToString());
         //        }
         //    }
         //}
 
         //Console.WriteLine(shortestNode.State.TotalString.ToString());
-        //Console.ReadKey();
+        Console.ReadKey();
     }
 
     private static List<int> GetSurroundingPositions(int playerPosition)
@@ -259,12 +270,12 @@ class Player
 
 
         char solveForLetter = MagicPhrase[currentPhraseIndex];
-        thisNode.Childrean = GetPossibleSolutions(solveForLetter, thisNode.State)
+        thisNode.Childrean = GetPossibleSolutions(solveForLetter, thisNode.State, ref currentPhraseIndex)
             .Select(x => new Node { State = x, Parent = thisNode })
             .ToArray();
 
         Node shortestNode = null;
-
+                
         foreach (var childNode in thisNode.Childrean)
         {
             PermCounter++;
@@ -281,10 +292,10 @@ class Player
         return shortestNode;
     }
 
-    private static Gamestate[] GetPossibleSolutions(char letter, Gamestate currentState)
+    private static Gamestate[] GetPossibleSolutions(char letter, Gamestate currentState,ref int currentPhraseIndex, bool AllowCompressed = true)
     {
         List<Gamestate> possibleResultingGamestate = new List<Gamestate>();
-
+        
         foreach(var i in GetSurroundingPositions(currentState.PlayerPosition))
         {
             string moveTo = GetMoveToRune(currentState.PlayerPosition, i);
@@ -300,7 +311,58 @@ class Player
             possibleResultingGamestate.Add(gamestate);
         }
 
+        if(AllowCompressed && FoundMatches.ContainsKey(currentPhraseIndex))
+        {
+            List<Gamestate> result = possibleResultingGamestate.OrderBy(x => x.TotalStringLength).Take(MaxTake).ToList();
+
+            Gamestate compressedSolution = GetCompressed(letter, currentState, ref currentPhraseIndex);
+
+            result.Add(compressedSolution);
+
+            return result.ToArray();
+
+        } else
+        {
+            return possibleResultingGamestate.OrderBy(x => x.TotalStringLength).Take(MaxTake).ToArray();
+        }
+
+    }
+
+    private static Gamestate GetCompressed(char letter, Gamestate currentState, ref int currentPhraseIndex)
+    {
+        var match = FoundMatches[currentPhraseIndex];
+
+        var childrean = GetPossibleSolutions2(MagicPhrase.Substring(match.Index, match.Length), letter, currentState, ref currentPhraseIndex);
+
+
+    }
+
+    private static Gamestate[] GetPossibleSolutions2(string word, char letter, Gamestate currentState, ref int currentPhraseIndex)
+    {
+        List<Gamestate> possibleResultingGamestate = new List<Gamestate>();
+
+        foreach (var i in GetSurroundingPositions(currentState.PlayerPosition))
+        {
+            string moveTo = GetMoveToRune(currentState.PlayerPosition, i);
+            string changeTo = ChangeAndHitRune(i, letter, currentState.CurrentRunes, out char[] newRunes);
+
+            Gamestate gamestate = new Gamestate()
+            {
+                CurrentRunes = newRunes,
+                TotalStringLength = currentState.TotalStringLength + moveTo.Length + changeTo.Length,
+                TotalString = currentState.TotalString + moveTo + changeTo,
+                PlayerPosition = i
+            };
+            possibleResultingGamestate.Add(gamestate);
+        }
+        
         return possibleResultingGamestate.OrderBy(x => x.TotalStringLength).Take(MaxTake).ToArray();
+
+    }
+
+    private static string CompressWith(int runeToBeChanged, int i, char letter, char[] currentRunes, out char[] newRunes)
+    {
+        throw new NotImplementedException();
     }
 
     public static string ChangeAndHitRune(int i, char nextLetter, char[] runes, out char[] newRunes)
@@ -358,6 +420,54 @@ class Player
         if (offsetBackwards > offsetForwards)
             return offsetForwards;
         return -offsetBackwards;
+    }
+
+    private static List<Match> FindRepeatingSequences(string str)
+    {
+        List<Match> foundmatches = new List<Match>();
+
+        // Create a new suffix array
+        for (int i = 0; i < str.Length; i++)
+        {
+            for (int j = i + 1; j < str.Length; j++)
+            {
+                int matches = 0;
+                string subString = str.Substring(i, j - i);
+                int k = i + (j - i);
+                Match foundMatch = null;
+                while (true)
+                {
+                    if (k + (j - i) > str.Length)
+                        break;
+
+                    string subString2 = str.Substring(k, j - i);
+                    if (subString2.Equals(subString))
+                    {
+                        matches++;
+                        k += (j - i);
+                        foundMatch = new Match() { Index = i, Length = (j - i), Repetitions = matches };
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+                if (foundMatch != null)
+                {
+                    if (foundMatch.Length == 1 && foundMatch.Repetitions < 5)
+                        break;
+                    if (foundMatch.Length == 2 && foundMatch.Repetitions < 4)
+                        break;
+
+
+                    foundmatches.Add(foundMatch);
+                    i += foundMatch.Length * foundMatch.Repetitions;
+                    break;
+                }
+            }
+        }
+
+        return foundmatches;
     }
 
 }
