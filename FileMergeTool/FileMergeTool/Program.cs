@@ -45,36 +45,42 @@ namespace FileMergeTool
 
             lock (_eventLock)
             {
-                foreach (var file in Directory.GetFiles(SourcePath, "*.cs", SearchOption.AllDirectories))
+                try
                 {
-                    using (TextReader reader = new StreamReader(file))
+                    foreach (var file in Directory.GetFiles(SourcePath, "*.cs", SearchOption.AllDirectories))
                     {
-                        string line;
-                        while ((line = reader.ReadLine()) != null)
+                        using (TextReader reader = new StreamReader(file))
                         {
-                            if (line.Trim().StartsWith("using") && line.Trim().EndsWith(";") )
+                            string line;
+                            while ((line = reader.ReadLine()) != null)
                             {
-                                if(!usings.Contains(line.Trim()))
-                                    usings.Add(line.Trim());
-                                continue;
-                            }
-                            if (line.Trim().StartsWith("[assembly:"))
-                                continue;
+                                if (line.Trim().StartsWith("using") && line.Trim().EndsWith(";"))
+                                {
+                                    if (!usings.Contains(line.Trim()))
+                                        usings.Add(line.Trim());
+                                    continue;
+                                }
+                                if (line.Trim().StartsWith("[assembly:"))
+                                    continue;
 
-                            resultBuilder.AppendLine(line);
+                                resultBuilder.AppendLine(line);
+                            }
                         }
                     }
-                }
-                using (TextWriter tw = new StreamWriter(DestinationFile, false))
-                {
-                    StringBuilder usingsBuilder = new StringBuilder();
-                    foreach (var use in usings)
-                        usingsBuilder.AppendLine(use);
+                    using (TextWriter tw = new StreamWriter(DestinationFile, false))
+                    {
+                        StringBuilder usingsBuilder = new StringBuilder();
+                        foreach (var use in usings)
+                            usingsBuilder.AppendLine(use);
 
-                    tw.Write(usingsBuilder.ToString());
-                    tw.Write(resultBuilder.ToString());
+                        tw.Write(usingsBuilder.ToString());
+                        tw.Write(resultBuilder.ToString());
+                    }
+                    Console.Write($"{DateTime.Now.ToShortTimeString()} wrote {DestinationFile}");
+                } catch(Exception ex)
+                {
+                    Console.Error.WriteLine("Caught Exception of Type: " + ex.GetType().Name.ToString());
                 }
-                Console.Write($"{DateTime.Now.ToShortTimeString()} wrote {DestinationFile}");
             } // end lock
         }
 

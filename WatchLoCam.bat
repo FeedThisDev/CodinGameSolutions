@@ -1,0 +1,1 @@
+.\FileMergeTool.exe C:\Projekte\CodinGameSolutions\LoCaM\LoCaM\ LoCaM\merged.cs

@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using static CodeOfKutulu.Gameboard;
 
 namespace CodeOfKutulu
 {
@@ -22,9 +21,7 @@ namespace CodeOfKutulu
         }
 
         public EntityType Type { get; protected set; }
-
-        public Field Field { get; private set; }
-
+        
         public int ID { get; private set; }
         public int X { get; private set; }
         public int Y { get; private set; }
@@ -38,8 +35,6 @@ namespace CodeOfKutulu
             ID = int.Parse(inputs[1]);
             X = int.Parse(inputs[2]);
             Y = int.Parse(inputs[3]);
-            if (X >= 0 && Y >= 0 && X < WIDTH && Y < HEIGHT)
-                Field = Gameboard.Fields[X, Y];
         }
 
         public static Entity CreateEntityFromString(string entityDescription, bool isPlayer = false)
@@ -68,7 +63,7 @@ namespace CodeOfKutulu
                     return new Shelter(inputs);
 
                 case EntityType.SLASHER:
-                    return new Wanderer(inputs, true);
+                    return new Slasher(inputs);
 
                 default:
                     throw new NotImplementedException();
@@ -78,16 +73,6 @@ namespace CodeOfKutulu
         public bool Equals(Field field)
         {
             throw new Exception("Can't process equals on Entity and Field");
-        }
-
-        public int GetDistanceTo(Entity otherEntity)
-        {
-            return Math.Abs(this.X - otherEntity.X) + Math.Abs(this.Y - otherEntity.Y);
-        }
-
-        public int GetDistanceTo(Field otherField)
-        {
-            return Math.Abs(this.X - otherField.X) + Math.Abs(this.Y - otherField.Y);
         }
 
         public override string ToString()

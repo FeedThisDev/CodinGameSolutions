@@ -56,28 +56,7 @@ namespace CodeOfKutulu
             return this.Col == other.Col && this.Row == other.Row;
         }
 
-        internal IEnumerable<Field> GetNeighouringFields(int maxDistance = 1)
-        {
-            List<Field> result = new List<Field>();
-
-            for (int col = X - maxDistance; col <= X + maxDistance; col++)
-            {
-                for (int row = Y - maxDistance; row <= Y + maxDistance; row++)
-                {
-                    if (col < 0 || row < 0 || col >= WIDTH || row >= HEIGHT)
-                        continue;
-
-                    if (this.GetDistanceTo(Fields[col, row]) > maxDistance)
-                        continue;
-
-                    if (Fields[col, row].IsWall)
-                        continue;
-
-                    result.Add(Fields[col, row]);
-                }
-            }
-            return result;
-        }
+       
 
         public int GetDistanceTo(Entity otherEntity)
         {

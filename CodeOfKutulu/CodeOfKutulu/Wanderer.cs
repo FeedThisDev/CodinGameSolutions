@@ -42,22 +42,17 @@ namespace CodeOfKutulu
             {
                 if (TargetedExplorerID == -1)
                     return null;
-                return (Explorer)Gameboard.Entities.Single(x => x.ID == TargetedExplorerID);
+                return (Explorer) Game.Gameboard.Entities.Single(x => x.ID == TargetedExplorerID);
             }
         }
 
         public State CurrentState { get; private set; }
-        public bool IsSlasher { get; private set; }
-        public Wanderer(string[] inputs, bool isSlasher = false) : base(inputs)
+        public Wanderer(string[] inputs) : base(inputs)
         {
             Type = EntityType.WANDERER;
             _time = int.Parse(inputs[4]);
             CurrentState = (State)int.Parse(inputs[5]);
-            TargetedExplorerID = int.Parse(inputs[6]);
-            if (isSlasher)
-            {
-                IsSlasher = true;
-            }
+            TargetedExplorerID = int.Parse(inputs[6]);           
         }
     }
 }

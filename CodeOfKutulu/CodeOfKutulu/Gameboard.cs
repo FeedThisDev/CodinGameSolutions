@@ -6,73 +6,27 @@ using System.Threading.Tasks;
 
 namespace CodeOfKutulu
 {
-    public static class Gameboard
+    public class Gameboard
     {
-        static Gameboard()
+        public Gameboard(int width, int height)
         {
-            Entities = new List<Entity>();
-        }
-
-
-        public static Explorer MyExplorer { get; private set; }
-
-        public static List<Entity> Entities { get; private set; }
-
-        public static int WIDTH { get; private set; }
-        public static int HEIGHT { get; private set; }
-
-        public static int SanityLossLonely { get; private set; }
-
-        public static int SanityLossGroup { get; private set; }
-
-        public static int WandererSpawnTime { get; private set; }
-
-        public static int WandererLifeTime { get; private set; }
-
-        public static Field[,] Fields { get; private set; }
-
-        public static void GAMEINIT()
-        {
-            WIDTH = int.Parse(Console.ReadLine());
-            HEIGHT = int.Parse(Console.ReadLine());
+            WIDTH = width;
+            HEIGHT = height;
             Fields = new Field[WIDTH, HEIGHT];
-
-            for (int row = 0; row < HEIGHT; row++)
-            {
-                string line = Console.ReadLine();
-                for (int col = 0; col < line.Length; col++)
-                {
-                    char symbol = line[col];
-                    Fields[col, row] = new Field(col, row, symbol);
-                }
-            }
-
-            string[] inputs = Console.ReadLine().Split(' ');
-
-            SanityLossLonely = int.Parse(inputs[0]); // how much sanity you lose every turn when alone, always 3 until wood 1
-            SanityLossGroup = int.Parse(inputs[1]); // how much sanity you lose every turn when near another player, always 1 until wood 1
-            WandererSpawnTime = int.Parse(inputs[2]); // how many turns the wanderer take to spawn, always 3 until wood 1
-            WandererLifeTime = int.Parse(inputs[3]); // how many turns the wanderer is on map after spawning, always 40 until wood 1
         }
 
-        public static void TURNINIT()
-        {
-            Entities.Clear();
-            int entityCount = int.Parse(Console.ReadLine()); // the first given entity corresponds to your explorer
+        public int WIDTH { get; private set; }
+        public int HEIGHT { get; private set; }
 
-            MyExplorer = (Explorer)Entity.CreateEntityFromString(Console.ReadLine(), true);
-            Entities.Add(MyExplorer);
+        public Explorer MyExplorer { get; set; }
 
-            for (int i = 1; i < entityCount; i++)
-            {
-                var entity = Entity.CreateEntityFromString(Console.ReadLine());
-                Entities.Add(entity);
-            }
+        public List<Entity> Entities { get; private set; }
+        
+        public Field[,] Fields { get; private set; }
 
-            CalculateScore();
-        }
+      
 
-        private static void CalculateScore()
+        public void CalculateScoreForEachField()
         {
             for (int col = 0; col < WIDTH; col++)
             {
@@ -87,13 +41,12 @@ namespace CodeOfKutulu
                 if (entity.Type == Entity.EntityType.WANDERER)
                 {
                     var mob = (Wanderer)entity;
-                    int score = -10;
-                    if (mob.IsSlasher)
-                        score = -25;
+                    int score = -20;
+
                     if ((mob.CurrentState == Wanderer.State.SPAWNING && mob.TimeTillSpawn <= 2) || mob.CurrentState == Wanderer.State.WANDERING)
                     {
-                        entity.Field.AddScore(score);
-                        IEnumerable<Field> neighbouring = entity.Field.GetNeighouringFields(1);
+                        Fields[mob.X, mob.Y].AddScore(score);
+                        IEnumerable<Field> neighbouring = GetNeighouringFields(entity, 1);
                         foreach (var field in neighbouring)
                         {
                             field.AddScore(score);
@@ -102,7 +55,7 @@ namespace CodeOfKutulu
                 }
                 if (entity.Type == Entity.EntityType.SLASHER)
                 {
-                    var mob = (Wanderer)entity;
+                    var mob = (Slasher)entity;
                     if ((mob.CurrentState == Wanderer.State.SPAWNING && mob.TimeTillSpawn <= 2) || mob.CurrentState == Wanderer.State.WANDERING)
                     {
                         entity.Field.AddScore(-50);
@@ -117,7 +70,7 @@ namespace CodeOfKutulu
                 {
                     foreach (var field in entity.Field.GetNeighouringFields(2))
                     {
-                        field.AddScore(SanityLossLonely - SanityLossGroup);
+                        field.AddScore(Game.SanityLossLonely - Game.SanityLossGroup);
                     }
                 }
                 if (entity.Type == Entity.EntityType.EFFECT_LIGHT)
@@ -151,22 +104,77 @@ namespace CodeOfKutulu
 
         }
 
-        public static IEnumerable<Explorer> GetOtherExplorers()
+
+        internal IEnumerable<Field> GetNeighouringFields(Entity entityOnField, int maxDistance = 1)
+        {
+            return GetNeighouringFields(entityOnField.X, entityOnField.Y, maxDistance);
+        }
+
+        internal IEnumerable<Field> GetNeighouringFields(Field ofField, int maxDistance = 1)
+        {
+            return GetNeighouringFields(ofField.X, ofField.Y, maxDistance);
+        }
+
+        internal IEnumerable<Field> GetNeighouringFields(int X, int Y, int maxDistance = 1)
+        {
+            List<Field> result = new List<Field>();
+
+            for (int col = X - maxDistance; col <= X + maxDistance; col++)
+            {
+                for (int row = Y - maxDistance; row <= Y + maxDistance; row++)
+                {
+                    if (col < 0 || row < 0 || col >= WIDTH || row >= HEIGHT)
+                        continue;
+
+                    if (this.GetDistanceTo(Fields[col, row]) > maxDistance)
+                        continue;
+
+                    if (Fields[col, row].IsWall)
+                        continue;
+
+                    result.Add(Fields[col, row]);
+                }
+            }
+            return result;
+        }
+
+        public static int GetDistanceBetween(Entity entity1, Entity entity2)
+        {
+            return Math.Abs(entity1.X - entity2.X) + Math.Abs(entity1.Y - entity2.Y);
+        }
+
+        public static int GetDistanceBetween(Entity entity1, Field field1)
+        {
+            return Math.Abs(entity1.X - field1.X) + Math.Abs(entity1.Y - field1.Y);
+        }
+
+        public static int GetDistanceBetween(Field field1, Entity entity1)
+        {
+            return GetDistanceBetween(entity1, field1);
+        }
+
+        public static int GetDistanceBetween(Field field1, Field field2)
+        {
+            return Math.Abs(field1.X - field2.X) + Math.Abs(field1.Y - field2.Y);
+        }
+
+
+        public IEnumerable<Explorer> GetOtherExplorers()
         {
             return Entities
                 .Where(x => x.Type == Entity.EntityType.EXPLORER && ((Explorer)x).IsPlayer == false)
                 .Cast<Explorer>();
         }
 
-        public static IEnumerable<Explorer> GetOtherExplorersByDistance(Entity otherEntity)
+        public IEnumerable<Explorer> GetOtherExplorersByDistance(Entity otherEntity)
         {
             return Entities
                 .Where(x => x.Type == Entity.EntityType.EXPLORER && ((Explorer)x).IsPlayer == false)
-                .OrderBy(x => otherEntity.GetDistanceTo(x))
+                .OrderBy(x => GetDistanceBetween(x, otherEntity))
                 .Cast<Explorer>();
         }
 
-        internal static IEnumerable<Effect> GetMyEffects()
+        internal IEnumerable<Effect> GetMyEffects()
         {
             return Entities.Where(x => (x.Type == Entity.EntityType.EFFECT_LIGHT
                                         || x.Type == Entity.EntityType.EFFECT_PLAN)
@@ -175,7 +183,7 @@ namespace CodeOfKutulu
 
         }
 
-        internal static IEnumerable<Wanderer> GetActiveEnemies()
+        internal IEnumerable<Wanderer> GetActiveEnemies()
         {
             return Entities.Where(x =>
             x.Type == Entity.EntityType.WANDERER
